@@ -358,7 +358,8 @@ export const RentalOperations = () => {
                 uploadedUrls.push({ url, angle });
             }
             setPhotos((prev) => [...prev, ...uploadedUrls]);
-        } catch {
+        } catch (error) {
+            console.error("Fotoğraf yükleme hatası:", error);
             toast({ title: "Hata", description: "Fotoğraf yüklenemedi.", variant: "destructive" });
         } finally {
             e.target.value = "";
