@@ -1,0 +1,60 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOperationOrAdmin() {
+      return isSignedIn() &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['admin', 'operation'];
+    }
+    
+    function isValidImage() {
+      return request.resource.size < 10 * 1024 * 1024 // 10MB
+             && request.resource.contentType.matches('image/.*');
+    }
+    
+    // Vehicle images
+    match /vehicles/{vehicleId}/{allPaths=**} {
+      allow read: if true; // Public read
+      allow write: if isSignedIn() && isValidImage();
+    }
+    
+    // Operation photos and contract PDFs (delivery/return or operationId/sozlesme.pdf)
+    match /operations/{pathSegment}/{allPaths=**} {
+      allow read: if isSignedIn();
+      // Create/update — 10MB PDF limit to avoid 403 on multi-page contracts
+      allow write: if isSignedIn() && (
+        request.resource == null ||
+        isValidImage() ||
+        (request.resource.contentType == 'application/pdf' && request.resource.size < 10 * 1024 * 1024)
+      );
+    }
+    
+    // Customer documents — restricted to operation/admin role
+    match /customers/{customerId}/{allPaths=**} {
+      allow read: if isOperationOrAdmin();
+      allow write: if isOperationOrAdmin() && (
+        isValidImage() ||
+        (request.resource.contentType == 'application/pdf' && request.resource.size < 10 * 1024 * 1024)
+      );
+    }
+    
+    // Maintenance photos
+    match /maintenance/{maintenanceId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidImage();
+    }
+
+    // Tahsilat dekontları (foto/PDF, max 10MB)
+    match /dekontlar/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.resource.size < 10 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+    }
+  }
+}
