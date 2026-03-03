@@ -8,7 +8,9 @@ import {
     updateDoc,
     doc,
     query,
-    orderBy
+    orderBy,
+    where,
+    limit
 } from "firebase/firestore";
 import {
     ref,
@@ -245,7 +247,7 @@ export const RentalOperations = () => {
         const incomingPlate = normalizePlate(pickString(booking.vehiclePlate));
         const matchedVehicle = vehicles.find((vehicle) => normalizePlate(String(vehicle.plate || "")) === incomingPlate);
         if (matchedVehicle) {
-            setSelectedVehicle(matchedVehicle);
+            handleVehicleSelect(matchedVehicle);
             setStep("customer");
         } else {
             toast({
@@ -340,6 +342,30 @@ export const RentalOperations = () => {
             console.error(error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleVehicleSelect = async (v: OperationVehicle) => {
+        setSelectedVehicle(v);
+        // Hasar noktalarını son operasyondan yükle
+        setDamagePoints([]); // Önce resetle
+        if (!v) return;
+        try {
+            const opq = query(
+                collection(db, "vehicle_operations"),
+                where("vehicleId", "==", v.id),
+                orderBy("date", "desc"),
+                limit(1)
+            );
+            const opsn = await getDocs(opq);
+            if (!opsn.empty) {
+                const lastOp = opsn.docs[0].data();
+                if (lastOp.damagePoints && Array.isArray(lastOp.damagePoints)) {
+                    setDamagePoints(lastOp.damagePoints as DamagePoint3D[]);
+                }
+            }
+        } catch (err) {
+            console.warn("Son hasar durumu yüklenemedi:", err);
         }
     };
 
@@ -1140,7 +1166,7 @@ export const RentalOperations = () => {
                                 <Card
                                     key={v.id}
                                     className={`p-4 cursor-pointer hover:border-primary transition-colors ${selectedVehicle?.id === v.id ? 'border-primary ring-1 ring-primary' : ''}`}
-                                    onClick={() => setSelectedVehicle(v)}
+                                    onClick={() => handleVehicleSelect(v)}
                                 >
                                     <div className="flex justify-between items-center">
                                         <div>
