@@ -45,7 +45,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
-import { DamageControl3D, type DamagePoint3D } from "@/components/DamageControl3D";
+
 import { generateRentalContractPDF } from "@/utils/rentalContractPdf";
 import { compressImageForUpload } from "@/utils/imageCompression";
 import { analyzeDocumentOcr } from "@/utils/ai";
@@ -192,7 +192,8 @@ export const RentalOperations = () => {
     const [customTotalRate, setCustomTotalRate] = useState(""); // Allows manual override of total rent
     const [photos, setPhotos] = useState<{ url: string, angle: string }[]>([]);
     const [uploading, setUploading] = useState(false);
-    const [damagePoints, setDamagePoints] = useState<DamagePoint3D[]>([]);
+    const [previousPhotos, setPreviousPhotos] = useState<{ url: string, angle: string }[]>([]);
+    const [damagePoints] = useState<unknown[]>([]); // Sadece uyumluluk için, artık kullanılmıyor
 
     // Müşteri (operasyon)
     const [customers, setCustomers] = useState<OperationCustomer[]>([]);
@@ -347,25 +348,25 @@ export const RentalOperations = () => {
 
     const handleVehicleSelect = async (v: OperationVehicle) => {
         setSelectedVehicle(v);
-        // Hasar noktalarını son operasyondan yükle
-        setDamagePoints([]); // Önce resetle
+        // Önceki operasyon (teslimat veya iade) fotoğraflarını getir
+        setPreviousPhotos([]);
         if (!v) return;
         try {
             const opq = query(
                 collection(db, "vehicle_operations"),
                 where("vehicleId", "==", v.id),
                 orderBy("date", "desc"),
-                limit(1)
+                limit(1) // En son yapılan operasyonu al (delivery veya return)
             );
             const opsn = await getDocs(opq);
             if (!opsn.empty) {
                 const lastOp = opsn.docs[0].data();
-                if (lastOp.damagePoints && Array.isArray(lastOp.damagePoints)) {
-                    setDamagePoints(lastOp.damagePoints as DamagePoint3D[]);
+                if (lastOp.photos && Array.isArray(lastOp.photos)) {
+                    setPreviousPhotos(lastOp.photos as { url: string, angle: string }[]);
                 }
             }
         } catch (err) {
-            console.warn("Son hasar durumu yüklenemedi:", err);
+            console.warn("Önceki fotoğraflar yüklenemedi:", err);
         }
     };
 
@@ -1703,18 +1704,34 @@ export const RentalOperations = () => {
                 <div className="space-y-6">
                     <Card className="p-4 space-y-4">
                         <h3 className="font-semibold text-lg flex items-center gap-2">
-                            <AlertTriangle className="w-5 h-5" /> Hasar Kontrolü
+                            <AlertTriangle className="w-5 h-5" /> Hasar Kontrolü / Referans Fotoğraflar
                         </h3>
-                        <Suspense fallback={<div className="h-[340px] flex items-center justify-center bg-slate-100 rounded-xl border-2 border-slate-300 text-slate-500">Yükleniyor...</div>}>
-                            <DamageControl3D
-                                damagePoints={damagePoints}
-                                setDamagePoints={setDamagePoints}
-                                vehicleName={selectedVehicle?.name}
-                            />
-                        </Suspense>
+
+                        {previousPhotos.length > 0 && (
+                            <div className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <Label className="text-slate-700 font-semibold mb-2 block border-b pb-2">Önceki İşlemdeki Araç Fotoğrafları (Kıyaslama İçin)</Label>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    {previousPhotos.map((photo, i) => (
+                                        <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 group">
+                                            <a href={photo.url} target="_blank" rel="noopener noreferrer">
+                                                <img src={photo.url} alt={`Önceki ${photo.angle}`} className="w-full h-full object-cover transition-transform hover:scale-105" />
+                                            </a>
+                                            <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] py-1 px-2 text-center pointer-events-none">
+                                                {photo.angle}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        {previousPhotos.length === 0 && (
+                            <div className="p-4 bg-slate-50 text-slate-500 text-sm rounded-xl border border-slate-200 text-center">
+                                Araca ait önceki teslimat/iade fotoğrafı bulunamadı.
+                            </div>
+                        )}
 
                         <div className="space-y-2">
-                            <Label>Hasar Notları</Label>
+                            <Label>Hasar Notları / Tespitler</Label>
                             <Textarea
                                 placeholder="Hasar detaylarını yazın..."
                                 value={notes}
