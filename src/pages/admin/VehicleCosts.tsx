@@ -94,6 +94,7 @@ type Vehicle = {
   name: string;
   plate: string;
   status?: string;
+  purchase_price?: number;
 };
 
 type PaymentRecord = {
@@ -221,6 +222,7 @@ export const VehicleCosts = () => {
               name: String(data.name || "Araç"),
               plate: String(data.plate || "-"),
               status: data.status,
+              purchase_price: Number(data.purchase_price || 0),
             };
           })
         );
@@ -364,13 +366,18 @@ export const VehicleCosts = () => {
         .filter((p) => p.vehiclePlate === (v.plate || "").toUpperCase())
         .reduce((s, p) => s + p.amount, 0);
       const profit = income - cost;
+      const purchasePrice = v.purchase_price || 0;
+      const totalInvested = purchasePrice + cost;
+      const roi = totalInvested > 0 ? (profit / totalInvested) * 100 : 0;
       return {
         vehicleId: v.id,
         plate: v.plate,
         name: v.name,
+        purchasePrice,
         cost,
         income,
         profit,
+        roi,
       };
     })
       .filter((row) => row.cost > 0 || row.income > 0)
@@ -659,7 +666,7 @@ export const VehicleCosts = () => {
             Araç Başı Karlılık
           </CardTitle>
           <CardDescription>
-            Seçili tarih aralığında her aracın gideri, geliri ve net karı. Sadece gider veya gelir kaydı olan araçlar listelenir.
+            Seçili tarih aralığında her aracın alış fiyatı, gideri, geliri, net karı ve yatırım getirisi (ROI).
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -668,26 +675,31 @@ export const VehicleCosts = () => {
               <TableRow>
                 <TableHead>Plaka</TableHead>
                 <TableHead>Araç</TableHead>
+                <TableHead className="text-right">Alış Fiyatı</TableHead>
                 <TableHead className="text-right">Gider</TableHead>
                 <TableHead className="text-right">Gelir</TableHead>
                 <TableHead className="text-right">Net Kar</TableHead>
-                <TableHead className="text-right">Kar %</TableHead>
+                <TableHead className="text-right">Marj %</TableHead>
+                <TableHead className="text-right">ROI %</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {vehicleProfitability.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                     Seçili dönemde gider veya gelir kaydı olan araç yok. Tarih aralığını genişletebilirsiniz.
                   </TableCell>
                 </TableRow>
               ) : (
                 vehicleProfitability.map((row) => {
-                  const marginPct = row.cost > 0 ? Math.round((row.profit / row.cost) * 100) : (row.income > 0 ? 100 : 0);
+                  const marginPct = row.income > 0 ? Math.round((row.profit / row.income) * 100) : 0;
                   return (
                     <TableRow key={row.vehicleId}>
                       <TableCell className="font-mono font-medium">{row.plate}</TableCell>
                       <TableCell className="text-sm">{row.name}</TableCell>
+                      <TableCell className="text-right text-sm">
+                        {row.purchasePrice > 0 ? formatMoney(row.purchasePrice) : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
                       <TableCell className="text-right text-destructive">{formatMoney(row.cost)}</TableCell>
                       <TableCell className="text-right text-emerald-700">{formatMoney(row.income)}</TableCell>
                       <TableCell className={`text-right font-semibold ${row.profit >= 0 ? "text-emerald-700" : "text-amber-700"}`}>
@@ -695,6 +707,9 @@ export const VehicleCosts = () => {
                       </TableCell>
                       <TableCell className={`text-right text-sm ${row.profit >= 0 ? "text-emerald-600" : "text-amber-600"}`}>
                         %{marginPct}
+                      </TableCell>
+                      <TableCell className={`text-right text-sm font-medium ${row.roi >= 0 ? "text-blue-600" : "text-red-600"}`}>
+                        %{row.roi.toFixed(1)}
                       </TableCell>
                     </TableRow>
                   );

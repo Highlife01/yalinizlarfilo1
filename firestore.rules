@@ -48,8 +48,7 @@ service cloud.firestore {
         request.resource.data.startDate is string &&
         request.resource.data.keys().size() < 25;
 
-      // Allow operation role to update booking status (delivery/return)
-      allow update: if isOperationOrAdmin();
+      // Allow operation role to update/delete booking status (delivery/return)
       allow update, delete: if isOperationOrAdmin();
     }
     

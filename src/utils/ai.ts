@@ -110,7 +110,7 @@ export async function analyzeDocumentOcr(file: File): Promise<OcrResult | null> 
 /**
  * Compares current damage photos with previous ones.
  */
-export async function analyzeDamageComparison(currentFile: File, previousPhotoUrls: string[]): Promise<string> {
+export async function analyzeDamageComparison(currentFile: File, _previousPhotoUrls: string[]): Promise<string> {
     const apiKey = await getGeminiApiKey();
     if (!apiKey) return "AI anahtarı eksik.";
 

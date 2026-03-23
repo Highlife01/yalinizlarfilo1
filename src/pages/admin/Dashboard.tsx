@@ -55,6 +55,7 @@ type VehicleRow = {
   casco_end_date?: string;
   tuvturk_end_date?: string;
   category?: string;
+  purchase_price?: number;
   // GPS verileri (Seyir Mobil API gelince dolacak)
   gpsLat?: number;
   gpsLng?: number;
@@ -100,6 +101,7 @@ type PaymentRow = {
   id: string;
   amount: number;
   date?: string;
+  vehiclePlate?: string;
 };
 
 type MaintenanceRow = {
@@ -281,16 +283,46 @@ export const Dashboard = () => {
     }
   }, []);
 
-  // Otomatik GPS Yenileme (60 saniyede bir)
+  // Otomatik GPS Yenileme (60 saniyede bir, sadece sekme görünürken)
   useEffect(() => {
     fetchGPS(); // İlk yüklemede çek
 
-    const interval = setInterval(() => {
-      fetchGPS();
-      console.log("GPS verileri otomatik güncellendi.");
-    }, 60000); // 60 saniye
+    let interval: ReturnType<typeof setInterval> | null = null;
 
-    return () => clearInterval(interval);
+    const startPolling = () => {
+      if (interval) return;
+      interval = setInterval(() => {
+        fetchGPS();
+      }, 60000); // 60 saniye
+    };
+
+    const stopPolling = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchGPS(); // Sekme tekrar aktif olunca hemen bir kez çek
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    // Sekme görünürse polling başlat
+    if (document.visibilityState === "visible") {
+      startPolling();
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [fetchGPS]);
 
   const fetchData = useCallback(async () => {
@@ -329,6 +361,7 @@ export const Dashboard = () => {
             casco_end_date: toStringSafe(data.casco_end_date, ""),
             tuvturk_end_date: toStringSafe(data.tuvturk_end_date, ""),
             category: toStringSafe(data.category, "Diğer"),
+            purchase_price: toNumberSafe(data.purchase_price, 0),
           } satisfies VehicleRow;
         });
         setVehicles(vehicleRows);
@@ -402,6 +435,7 @@ export const Dashboard = () => {
             id: docSnap.id,
             amount: toNumberSafe(data.amount, 0),
             date: toStringSafe(data.date, ""),
+            vehiclePlate: toStringSafe(data.vehiclePlate, ""),
           } satisfies PaymentRow;
         });
         setPaymentsData(paymentRows);
@@ -847,6 +881,7 @@ export const Dashboard = () => {
         bookings={bookings}
         maintenance={maintenanceData}
         costs={vehicleCostsData}
+        payments={paymentsData}
         vehicles={vehicles}
       />
 

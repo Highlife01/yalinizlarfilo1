@@ -101,7 +101,7 @@ export const AdminLayout = ({ children, handleSignOut, userRole }: AdminLayoutPr
 
     return (
         <div className="flex min-h-screen bg-slate-50 font-sans">
-            <aside className="hidden w-64 flex-col border-r bg-slate-900 lg:flex shadow-xl z-20">
+            <aside className="hidden w-64 flex-col border-r bg-slate-900 md:flex shadow-xl z-20">
                 <SidebarContent />
             </aside>
 
@@ -113,7 +113,7 @@ export const AdminLayout = ({ children, handleSignOut, userRole }: AdminLayoutPr
 
             <div className="flex flex-col flex-1 min-w-0 bg-slate-50/50">
                 <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-white/80 backdrop-blur-md px-6 shadow-sm">
-                    <Button variant="ghost" size="icon" className="lg:hidden text-slate-700 hover:bg-slate-100" onClick={() => setSidebarOpen(true)}>
+                    <Button variant="ghost" size="icon" className="md:hidden text-slate-700 hover:bg-slate-100" onClick={() => setSidebarOpen(true)}>
                         <Menu className="h-6 w-6" />
                         <span className="sr-only">Menüyü aç/kapa</span>
                     </Button>
@@ -138,7 +138,7 @@ export const AdminLayout = ({ children, handleSignOut, userRole }: AdminLayoutPr
                     </div>
                 </header>
 
-                <main className="flex-1 overflow-auto p-4 md:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <main className="flex-1 overflow-auto p-3 sm:p-4 md:p-6 lg:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     {children}
                 </main>
             </div>

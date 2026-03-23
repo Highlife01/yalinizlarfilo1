@@ -3,10 +3,11 @@ import {
     collection,
     getDocs,
     addDoc,
-    deleteDoc,
     doc,
     query,
-    orderBy
+    orderBy,
+    where,
+    writeBatch
 } from "firebase/firestore";
 import { db } from "@/integrations/firebase/client";
 import {
@@ -106,6 +107,7 @@ export const Maintenance = () => {
 
     useEffect(() => {
         void fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const fetchData = async () => {
@@ -164,11 +166,28 @@ export const Maintenance = () => {
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await addDoc(collection(db, "maintenance"), formData);
+            const maintenanceRef = await addDoc(collection(db, "maintenance"), formData);
+
+            // Auto-sync: create a corresponding vehicle_costs entry
+            if ((formData.cost ?? 0) > 0 && formData.vehicleId) {
+                const costCategory = formData.serviceType === "repair" ? "onarim" : "bakim";
+                await addDoc(collection(db, "vehicle_costs"), {
+                    vehicleId: formData.vehicleId,
+                    vehiclePlate: formData.vehiclePlate,
+                    vehicleName: formData.vehicleName,
+                    category: costCategory,
+                    amount: formData.cost,
+                    description: `[Bakım] ${formData.description || formData.serviceType}`,
+                    date: formData.date,
+                    createdAt: new Date().toISOString(),
+                    linkedMaintenanceId: maintenanceRef.id,
+                });
+            }
+
             toast({ title: "Başarılı", description: "Bakım/Gider kaydı eklendi." });
             setDialogOpen(false);
             void fetchData();
-        } catch (error) {
+        } catch (_error) {
             toast({ title: "Hata", description: "Kayıt eklenemedi.", variant: "destructive" });
         }
     };
@@ -176,10 +195,19 @@ export const Maintenance = () => {
     const handleDelete = async (id: string) => {
         if (!confirm("Kaydı silmek istiyor musunuz?")) return;
         try {
-            await deleteDoc(doc(db, "maintenance", id));
+            const batch = writeBatch(db);
+            batch.delete(doc(db, "maintenance", id));
+
+            // Also delete linked vehicle_costs entry
+            const linkedCosts = await getDocs(
+                query(collection(db, "vehicle_costs"), where("linkedMaintenanceId", "==", id))
+            );
+            linkedCosts.forEach((d) => batch.delete(d.ref));
+
+            await batch.commit();
             toast({ title: "Silindi", description: "Kayıt silindi" });
             void fetchData();
-        } catch (e) {
+        } catch (_e) {
             toast({ title: "Hata", description: "Silinemedi", variant: "destructive" });
         }
     };

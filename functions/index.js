@@ -790,8 +790,11 @@ exports.getSeyirMobilGPS = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("permission-denied", "Admin role required.");
   }
 
-  const SEYIR_USER = "highlife01";
-  const SEYIR_PASS = "gQovch3E";
+  const SEYIR_USER = process.env.SEYIR_MOBIL_USER || "";
+  const SEYIR_PASS = process.env.SEYIR_MOBIL_PASS || "";
+  if (!SEYIR_USER || !SEYIR_PASS) {
+    throw new functions.https.HttpsError("failed-precondition", "Seyir Mobil kimlik bilgileri yapılandırılmamış. functions/.env dosyasına SEYIR_MOBIL_USER ve SEYIR_MOBIL_PASS ekleyin.");
+  }
   const ENDPOINT = "https://ws.seyirmobil.com/LocationService.asmx";
 
   const soapBody = `<?xml version="1.0" encoding="utf-8"?>
@@ -855,4 +858,143 @@ exports.getSeyirMobilGPS = functions.https.onCall(async (data, context) => {
 
   return { ok: true, count: vehicles.length, vehicles };
 });
+
+// ======================================================
+// AYLIK KIRALAMA BORÇLANDIRMA
+// Her gün saat 08:00'de çalışır. Aylık kiralamada
+// her ay dolduğunda customer_debts'e borç kaydı oluşturur.
+// ======================================================
+exports.generateMonthlyRentalCharges = functions.pubsub
+  .schedule("0 8 * * *")
+  .timeZone(ISTANBUL_TIMEZONE)
+  .onRun(async () => {
+    const db = admin.firestore();
+    const todayDate = new Date();
+    const todayIso = formatDateInTimezone(todayDate, ISTANBUL_TIMEZONE);
+
+    // Sadece delivery (teslim) ve aylık kiralama operasyonlarını al
+    const opsSnap = await db
+      .collection("vehicle_operations")
+      .where("type", "==", "delivery")
+      .where("rentalPricingMode", "==", "monthly")
+      .get();
+
+    let chargedCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
+
+    for (const opDoc of opsSnap.docs) {
+      const op = opDoc.data();
+      const opId = opDoc.id;
+
+      const startDateStr = String(op.rentalStartDate || "").trim();
+      if (!startDateStr) {
+        skippedCount++;
+        continue;
+      }
+
+      const monthlyRate = Number(op.monthlyRate || 0);
+      if (monthlyRate <= 0) {
+        skippedCount++;
+        continue;
+      }
+
+      const customerId = String(op.customerId || "").trim();
+      const customerName = String(op.customerName || "Bilinmiyor");
+      const vehiclePlate = String(op.vehiclePlate || "");
+      const totalMonths = Number(op.rentalMonthCount || 0);
+
+      // Kiralama başlangıç tarihini ayrıştır
+      const startDate = new Date(startDateStr);
+      if (isNaN(startDate.getTime())) {
+        skippedCount++;
+        continue;
+      }
+
+      // Bitiş tarihi kontrolü — süresi dolmuş kiralamaları atla
+      const endDateStr = String(op.rentalEndDate || "").trim();
+      if (endDateStr) {
+        const endNorm = normalizeDateValue(endDateStr);
+        if (endNorm && endNorm < todayIso) {
+          skippedCount++;
+          continue;
+        }
+      }
+
+      // Kaç ay geçmiş hesapla (başlangıctan bugüne)
+      const startYear = startDate.getFullYear();
+      const startMonth = startDate.getMonth();
+      const startDay = startDate.getDate();
+
+      const todayParts = todayIso.split("-");
+      const tYear = Number(todayParts[0]);
+      const tMonth = Number(todayParts[1]) - 1;
+      const tDay = Number(todayParts[2]);
+
+      // Toplam geçen ay sayısını hesapla
+      let elapsedMonths = (tYear - startYear) * 12 + (tMonth - startMonth);
+
+      // Ay dolma günü: başlangıç gününe eşit veya geçmişse mevcut ay sayılır
+      if (tDay < startDay) {
+        elapsedMonths--;
+      }
+
+      if (elapsedMonths < 1) {
+        skippedCount++;
+        continue;
+      }
+
+      // Eğer toplam ay belirtilmişse ve geçen ay bunu aşıyorsa sınırla
+      const maxMonths = totalMonths > 0 ? totalMonths : elapsedMonths;
+      const monthsToCharge = Math.min(elapsedMonths, maxMonths);
+
+      // Her geçmiş ay için borç kaydı oluştur (daha önce oluşturulmuşsa atla)
+      for (let m = 1; m <= monthsToCharge; m++) {
+        const logId = `monthly_${opId}_m${m}`;
+
+        try {
+          const existingSnap = await db.collection("customer_debts").doc(logId).get();
+          if (existingSnap.exists) {
+            continue; // Bu ay zaten borçlandırılmış
+          }
+
+          // Borçlandırılacak ayın tarihini hesapla
+          const chargeDate = new Date(startDate);
+          chargeDate.setMonth(chargeDate.getMonth() + m);
+          const chargeDateIso = chargeDate.toISOString();
+
+          await db.collection("customer_debts").doc(logId).set({
+            customerId: customerId,
+            customerName: customerName,
+            type: "borc",
+            category: "kiralama",
+            amount: monthlyRate,
+            description: `${vehiclePlate} - Aylik kiralama (${m}. ay)`,
+            date: chargeDateIso,
+            operationId: opId,
+            vehiclePlate: vehiclePlate,
+            source: "monthly_auto",
+            monthIndex: m,
+            status: "unpaid",
+            createdAt: new Date().toISOString(),
+          });
+
+          chargedCount++;
+        } catch (err) {
+          errorCount++;
+          console.error(`Monthly charge error opId=${opId} month=${m}:`, err.message);
+        }
+      }
+    }
+
+    console.log("Monthly rental charges completed", {
+      date: todayIso,
+      chargedCount,
+      skippedCount,
+      errorCount,
+      totalOps: opsSnap.size,
+    });
+
+    return null;
+  });
 

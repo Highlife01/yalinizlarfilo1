@@ -120,6 +120,7 @@ export const VehicleDetail = () => {
   const [uploadingRegistration, setUploadingRegistration] = useState(false);
   useEffect(() => {
     void fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const fetchData = async () => {
@@ -172,7 +173,8 @@ export const VehicleDetail = () => {
       toast({ title: "Yuklendi", description: `${index + 1}. fotograf yuklendi.` });
     } catch (error) {
       console.error(error);
-      toast({ title: "Hata", description: "Fotograf yuklenemedi.", variant: "destructive" });
+      const errMsg = error instanceof Error ? error.message : JSON.stringify(error);
+      toast({ title: "Hata", description: `Fotograf yuklenemedi: ${errMsg}`, variant: "destructive" });
     } finally {
       event.target.value = "";
       setUploadingSlots((prev) => prev.map((isUploading, slot) => (slot === index ? false : isUploading)));
@@ -195,7 +197,9 @@ export const VehicleDetail = () => {
       toast({ title: "Yuklendi", description: "Ruhsat fotografi yuklendi." });
     } catch (error) {
       console.error(error);
-      toast({ title: "Hata", description: "Ruhsat fotografi yuklenemedi.", variant: "destructive" });
+      const errMsg = error instanceof Error ? error.message : JSON.stringify(error);
+      alert(`Ruhsat yukleme hatasi: ${errMsg}`);
+      toast({ title: "Hata", description: `Ruhsat fotografi yuklenemedi: ${errMsg}`, variant: "destructive" });
     } finally {
       event.target.value = "";
       setUploadingRegistration(false);
@@ -392,11 +396,23 @@ export const VehicleDetail = () => {
               </div>
             )}
             {formData.registration_photo_url ? (
-              <img
-                src={formData.registration_photo_url}
-                alt="Ruhsat fotografi"
-                className="h-28 w-44 rounded object-cover border border-slate-200"
-              />
+              <div className="relative inline-block">
+                <img
+                  src={formData.registration_photo_url}
+                  alt="Ruhsat fotografi"
+                  className="h-28 w-44 rounded object-cover border border-slate-200"
+                />
+                {editing && (
+                  <button
+                    type="button"
+                    onClick={() => setFormData((prev) => ({ ...prev, registration_photo_url: "" }))}
+                    className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-md transition-colors"
+                    title="Ruhsat fotoğrafını sil"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
             ) : (
               <p className="text-sm text-slate-500">Ruhsat fotografi yok.</p>
             )}
@@ -434,11 +450,23 @@ export const VehicleDetail = () => {
                     )}
                   </div>
                   {url ? (
-                    <img
-                      src={url}
-                      alt={`Arac fotograf ${index + 1}`}
-                      className="h-28 w-44 rounded object-cover border border-slate-200"
-                    />
+                    <div className="relative inline-block">
+                      <img
+                        src={url}
+                        alt={`Arac fotograf ${index + 1}`}
+                        className="h-28 w-44 rounded object-cover border border-slate-200"
+                      />
+                      {editing && (
+                        <button
+                          type="button"
+                          onClick={() => updateImageSlot(index, "")}
+                          className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-md transition-colors"
+                          title="Fotoğrafı sil"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <p className="text-sm text-slate-500">Bu slotta fotograf yok.</p>
                   )}

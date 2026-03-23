@@ -172,6 +172,11 @@ export const Customers = () => {
     const [idBackFile, setIdBackFile] = useState<File | null>(null);
     const [driverLicenseFrontFile, setDriverLicenseFrontFile] = useState<File | null>(null);
     const [driverLicenseBackFile, setDriverLicenseBackFile] = useState<File | null>(null);
+
+    const [idFrontPreview, setIdFrontPreview] = useState<string | null>(null);
+    const [idBackPreview, setIdBackPreview] = useState<string | null>(null);
+    const [driverLicenseFrontPreview, setDriverLicenseFrontPreview] = useState<string | null>(null);
+    const [driverLicenseBackPreview, setDriverLicenseBackPreview] = useState<string | null>(null);
     const [formData, setFormData] = useState<Partial<Customer>>({
         name: "", email: "", phone: "", tckn: "", driverLicenseClass: "B",
         totalRentals: 0, lastRentalDate: "", idSerialNo: "", idIssuePlace: "", idIssueDate: "",
@@ -336,7 +341,7 @@ export const Customers = () => {
             await updateDoc(doc(db, "customer_debts", txId), { status: "paid" });
             toast({ title: "Güncellendi", description: "Borç ödendi olarak işaretlendi." });
             if (selectedCustomer) fetchCariTransactions(selectedCustomer.id);
-        } catch (e) {
+        } catch (_e) {
             toast({ title: "Hata", description: "Güncellenemedi.", variant: "destructive" });
         }
     };
@@ -347,7 +352,7 @@ export const Customers = () => {
             await deleteDoc(doc(db, "customer_debts", txId));
             toast({ title: "Silindi" });
             if (selectedCustomer) fetchCariTransactions(selectedCustomer.id);
-        } catch (e) {
+        } catch (_e) {
             toast({ title: "Hata", description: "Silinemedi.", variant: "destructive" });
         }
     };
@@ -363,7 +368,7 @@ export const Customers = () => {
 
         setUploading(true);
         try {
-            const { idFrontUrl, idBackUrl, driverLicenseFrontUrl, driverLicenseBackUrl, ...rest } = formData;
+            const { idFrontUrl: _ifu, idBackUrl: _ibu, driverLicenseFrontUrl: _dlfu, driverLicenseBackUrl: _dlbu, ...rest } = formData;
             const payload = {
                 ...rest,
                 tckn: isCorporate ? "" : (formData.tckn || "").trim(),
@@ -403,7 +408,9 @@ export const Customers = () => {
             fetchCustomers();
         } catch (error) {
             console.error(error);
-            toast({ title: "Hata", description: "Kayıt kaydedilemedi.", variant: "destructive" });
+            const errMsg = error instanceof Error ? error.message : JSON.stringify(error);
+            alert(`Müşteri kaydetme hatası: ${errMsg}`);
+            toast({ title: "Hata", description: `Kayıt kaydedilemedi: ${errMsg}`, variant: "destructive" });
         } finally {
             setUploading(false);
         }
@@ -417,6 +424,7 @@ export const Customers = () => {
         });
         setEditingCustomerId(null);
         setIdFrontFile(null); setIdBackFile(null); setDriverLicenseFrontFile(null); setDriverLicenseBackFile(null);
+        setIdFrontPreview(null); setIdBackPreview(null); setDriverLicenseFrontPreview(null); setDriverLicenseBackPreview(null);
     };
 
     const handleDelete = async (id: string) => {
@@ -425,7 +433,7 @@ export const Customers = () => {
             await deleteDoc(doc(db, "customers", id));
             toast({ title: "Silindi", description: "Müşteri kaydı silindi." });
             fetchCustomers();
-        } catch (e) {
+        } catch (_e) {
             toast({ title: "Hata", description: "Silinemedi.", variant: "destructive" });
         }
     };
@@ -620,22 +628,62 @@ export const Customers = () => {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label className="flex items-center gap-2"><Camera className="h-4 w-4" /> Kimlik ön yüz</Label>
-                                    <PhotoInput onChange={(e) => setIdFrontFile(e.target.files?.[0] ?? null)} labelCamera="Fotoğraf çek" labelGallery="Galeriden seç" />
+                                    <PhotoInput onChange={(e) => {
+                                        const file = e.target.files?.[0] ?? null;
+                                        setIdFrontFile(file);
+                                        if (file) setIdFrontPreview(URL.createObjectURL(file));
+                                        else setIdFrontPreview(null);
+                                    }} labelCamera="Fotoğraf çek" labelGallery="Galeriden seç" />
+                                    {(idFrontPreview || (editingCustomerId && formData.idFrontUrl)) && (
+                                        <div className="mt-2 relative inline-block">
+                                            <img src={idFrontPreview || formData.idFrontUrl} alt="Kimlik ön" className="h-20 w-32 object-cover rounded border" />
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <Label className="flex items-center gap-2"><Camera className="h-4 w-4" /> Kimlik arka yüz</Label>
-                                    <PhotoInput onChange={(e) => setIdBackFile(e.target.files?.[0] ?? null)} labelCamera="Fotoğraf çek" labelGallery="Galeriden seç" />
+                                    <PhotoInput onChange={(e) => {
+                                        const file = e.target.files?.[0] ?? null;
+                                        setIdBackFile(file);
+                                        if (file) setIdBackPreview(URL.createObjectURL(file));
+                                        else setIdBackPreview(null);
+                                    }} labelCamera="Fotoğraf çek" labelGallery="Galeriden seç" />
+                                    {(idBackPreview || (editingCustomerId && formData.idBackUrl)) && (
+                                        <div className="mt-2 relative inline-block">
+                                            <img src={idBackPreview || formData.idBackUrl} alt="Kimlik arka" className="h-20 w-32 object-cover rounded border" />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 text-sm font-medium text-slate-700 mt-4"><IdCard className="h-4 w-4" /> Ehliyet Bilgileri</div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label className="flex items-center gap-2"><Camera className="h-4 w-4" /> Ehliyet ön yüz</Label>
-                                    <PhotoInput onChange={(e) => setDriverLicenseFrontFile(e.target.files?.[0] ?? null)} labelCamera="Fotoğraf çek" labelGallery="Galeriden seç" />
+                                    <PhotoInput onChange={(e) => {
+                                        const file = e.target.files?.[0] ?? null;
+                                        setDriverLicenseFrontFile(file);
+                                        if (file) setDriverLicenseFrontPreview(URL.createObjectURL(file));
+                                        else setDriverLicenseFrontPreview(null);
+                                    }} labelCamera="Fotoğraf çek" labelGallery="Galeriden seç" />
+                                    {(driverLicenseFrontPreview || (editingCustomerId && formData.driverLicenseFrontUrl)) && (
+                                        <div className="mt-2 relative inline-block">
+                                            <img src={driverLicenseFrontPreview || formData.driverLicenseFrontUrl} alt="Ehliyet ön" className="h-20 w-32 object-cover rounded border" />
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <Label className="flex items-center gap-2"><Camera className="h-4 w-4" /> Ehliyet arka yüz</Label>
-                                    <PhotoInput onChange={(e) => setDriverLicenseBackFile(e.target.files?.[0] ?? null)} labelCamera="Fotoğraf çek" labelGallery="Galeriden seç" />
+                                    <PhotoInput onChange={(e) => {
+                                        const file = e.target.files?.[0] ?? null;
+                                        setDriverLicenseBackFile(file);
+                                        if (file) setDriverLicenseBackPreview(URL.createObjectURL(file));
+                                        else setDriverLicenseBackPreview(null);
+                                    }} labelCamera="Fotoğraf çek" labelGallery="Galeriden seç" />
+                                    {(driverLicenseBackPreview || (editingCustomerId && formData.driverLicenseBackUrl)) && (
+                                        <div className="mt-2 relative inline-block">
+                                            <img src={driverLicenseBackPreview || formData.driverLicenseBackUrl} alt="Ehliyet arka" className="h-20 w-32 object-cover rounded border" />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>

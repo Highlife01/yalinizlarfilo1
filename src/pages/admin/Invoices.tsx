@@ -7,6 +7,7 @@ import {
     orderBy,
     query,
     runTransaction,
+    setDoc,
     updateDoc,
     writeBatch,
     where
@@ -24,7 +25,8 @@ import {
     RefreshCw,
     BadgeCheck,
     Banknote,
-    Save
+    Save,
+    Pencil
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,6 +40,13 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { generateInvoicePdf } from "@/utils/exportUtils";
 
@@ -71,6 +80,9 @@ export const Invoices = () => {
     const [processingId, setProcessingId] = useState<string | null>(null);
     const [editingTahsilat, setEditingTahsilat] = useState<Record<string, string>>({});
     const [savingTahsilat, setSavingTahsilat] = useState<string | null>(null);
+    const [editingInvoiceType, setEditingInvoiceType] = useState<string | null>(null);
+    const [editingAmount, setEditingAmount] = useState<Record<string, string>>({});
+    const [savingField, setSavingField] = useState<string | null>(null);
 
     const parseAmount = (data: Record<string, unknown>) => {
         const rawAmount = Number(data.invoiceAmount ?? data.bookingTotalPrice ?? data.totalPrice ?? 0);
@@ -288,6 +300,37 @@ export const Invoices = () => {
                 await updateDoc(incomeRef, { amount: parsed });
             }
 
+            // Cari hesaba alacak kaydı oluştur/güncelle
+            if (parsed > 0) {
+                try {
+                    let resolvedCustId = (inv.customerId || "").trim();
+                    if (!resolvedCustId) {
+                        const custQ = query(collection(db, "customers"), where("name", "==", inv.customerName));
+                        const custSnap = await getDocs(custQ);
+                        resolvedCustId = custSnap.docs[0]?.id || "";
+                    }
+                    if (resolvedCustId) {
+                        const alacakRef = doc(db, "customer_debts", `tahsilat_${inv.id}`);
+                        await setDoc(alacakRef, {
+                            customerId: resolvedCustId,
+                            customerName: inv.customerName,
+                            type: "alacak",
+                            category: "nakit",
+                            amount: parsed,
+                            description: `${inv.vehiclePlate} - Fatura tahsilati`,
+                            date: new Date().toISOString(),
+                            vehiclePlate: inv.vehiclePlate,
+                            status: "completed",
+                            source: "invoice_tahsilat",
+                            sourceId: inv.id,
+                            createdAt: new Date().toISOString(),
+                        }, { merge: true });
+                    }
+                } catch (syncErr) {
+                    console.error("Cari tahsilat sync error:", syncErr);
+                }
+            }
+
             setInvoices((prev) =>
                 prev.map((item) =>
                     item.id === inv.id ? { ...item, collectedAmount: parsed } : item
@@ -302,7 +345,7 @@ export const Invoices = () => {
 
             toast({
                 title: "Kaydedildi",
-                description: `Tahsilat: ${parsed.toLocaleString("tr-TR")} TL olarak guncellendi.${inv.approvalStatus === "approved" ? " Ciro kaydi da guncellendi." : ""}`,
+                description: `Tahsilat: ${parsed.toLocaleString("tr-TR")} TL olarak guncellendi.${inv.approvalStatus === "approved" ? " Ciro ve cari kaydi da guncellendi." : ""}`,
             });
         } catch (error) {
             console.error("Save tahsilat error:", error);
@@ -313,6 +356,109 @@ export const Invoices = () => {
             });
         } finally {
             setSavingTahsilat(null);
+        }
+    };
+
+    const handleUpdateInvoiceType = async (inv: Invoice, newType: "individual" | "corporate") => {
+        if (newType === inv.invoiceType) {
+            setEditingInvoiceType(null);
+            return;
+        }
+        setSavingField(inv.id);
+        try {
+            const operationRef = doc(db, "vehicle_operations", inv.id);
+            await updateDoc(operationRef, { customerInvoiceType: newType });
+
+            setInvoices((prev) =>
+                prev.map((item) =>
+                    item.id === inv.id ? { ...item, invoiceType: newType } : item
+                )
+            );
+            setEditingInvoiceType(null);
+            toast({
+                title: "Guncellendi",
+                description: `Fatura tipi ${newType === "corporate" ? "Kurumsal" : "Bireysel"} olarak degistirildi.`,
+            });
+        } catch (error) {
+            console.error("Update invoice type error:", error);
+            toast({
+                title: "Hata",
+                description: "Fatura tipi guncellenemedi.",
+                variant: "destructive",
+            });
+        } finally {
+            setSavingField(null);
+        }
+    };
+
+    const handleUpdateAmount = async (inv: Invoice) => {
+        const rawValue = editingAmount[inv.id];
+        if (rawValue === undefined) return;
+
+        const parsed = Number(rawValue.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", "."));
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            toast({
+                title: "Hata",
+                description: "Gecerli bir tutar girin.",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        setSavingField(inv.id);
+        try {
+            const operationRef = doc(db, "vehicle_operations", inv.id);
+            await updateDoc(operationRef, { invoiceAmount: parsed });
+
+            // Onaylıysa income_records ve customer_debts borc kaydını da güncelle
+            if (inv.approvalStatus === "approved") {
+                try {
+                    const incomeRef = doc(db, "income_records", inv.id);
+                    await updateDoc(incomeRef, { invoiceAmount: parsed });
+
+                    let resolvedCustId = (inv.customerId || "").trim();
+                    if (!resolvedCustId) {
+                        const custQ = query(collection(db, "customers"), where("name", "==", inv.customerName));
+                        const custSnap = await getDocs(custQ);
+                        resolvedCustId = custSnap.docs[0]?.id || "";
+                    }
+                    if (resolvedCustId) {
+                        const debtRef = doc(db, "customer_debts", `invoice_${inv.id}`);
+                        await updateDoc(debtRef, {
+                            amount: parsed,
+                            description: `${inv.vehiclePlate} - Kiralama bedeli (fatura onayi)`,
+                        });
+                    }
+                } catch (syncErr) {
+                    console.error("Tutar sync error:", syncErr);
+                }
+            }
+
+            setInvoices((prev) =>
+                prev.map((item) =>
+                    item.id === inv.id ? { ...item, amount: parsed } : item
+                )
+            );
+
+            setEditingAmount((prev) => {
+                const next = { ...prev };
+                delete next[inv.id];
+                return next;
+            });
+
+            toast({
+                title: "Guncellendi",
+                description: `Fatura tutari ${parsed.toLocaleString("tr-TR")} TL olarak guncellendi.${inv.approvalStatus === "approved" ? " Cari hesap ve gelir kaydi da guncellendi." : ""}`,
+            });
+        } catch (error) {
+            console.error("Update amount error:", error);
+            toast({
+                title: "Hata",
+                description: "Tutar guncellenemedi.",
+                variant: "destructive",
+            });
+        } finally {
+            setSavingField(null);
         }
     };
 
@@ -484,16 +630,78 @@ export const Invoices = () => {
                                                 </div>
                                             </TableCell>
                                             <TableCell>
-                                                <Badge
-                                                    variant="outline"
-                                                    className={inv.invoiceType === "corporate" ? "bg-blue-50 text-blue-700" : "bg-slate-50 text-slate-700"}
-                                                >
-                                                    {inv.invoiceType === "corporate" ? "Kurumsal" : "Bireysel"}
-                                                </Badge>
+                                                {editingInvoiceType === inv.id ? (
+                                                    <Select
+                                                        defaultValue={inv.invoiceType}
+                                                        onValueChange={(val) => void handleUpdateInvoiceType(inv, val as "individual" | "corporate")}
+                                                        disabled={savingField === inv.id}
+                                                    >
+                                                        <SelectTrigger className="w-[130px] h-8 text-sm">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="individual">Bireysel</SelectItem>
+                                                            <SelectItem value="corporate">Kurumsal</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        className="inline-flex items-center gap-1.5 group cursor-pointer"
+                                                        onClick={() => setEditingInvoiceType(inv.id)}
+                                                        title="Fatura tipini degistirmek icin tiklayin"
+                                                    >
+                                                        <Badge
+                                                            variant="outline"
+                                                            className={inv.invoiceType === "corporate" ? "bg-blue-50 text-blue-700" : "bg-slate-50 text-slate-700"}
+                                                        >
+                                                            {inv.invoiceType === "corporate" ? "Kurumsal" : "Bireysel"}
+                                                        </Badge>
+                                                        <Pencil className="h-3 w-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                    </button>
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex flex-col">
-                                                    <span className="font-medium">{inv.amount.toLocaleString("tr-TR")} TL</span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        {editingAmount[inv.id] !== undefined ? (
+                                                            <div className="flex items-center gap-1">
+                                                                <Input
+                                                                    className="w-28 h-8 text-sm font-medium"
+                                                                    value={editingAmount[inv.id]}
+                                                                    onChange={(e) =>
+                                                                        setEditingAmount((prev) => ({ ...prev, [inv.id]: e.target.value }))
+                                                                    }
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === "Enter") void handleUpdateAmount(inv);
+                                                                        if (e.key === "Escape") setEditingAmount((prev) => { const n = { ...prev }; delete n[inv.id]; return n; });
+                                                                    }}
+                                                                    autoFocus
+                                                                />
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                                                    onClick={() => void handleUpdateAmount(inv)}
+                                                                    disabled={savingField === inv.id}
+                                                                >
+                                                                    <Save className="h-4 w-4" />
+                                                                </Button>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                className="inline-flex items-center gap-1.5 group cursor-pointer"
+                                                                onClick={() =>
+                                                                    setEditingAmount((prev) => ({ ...prev, [inv.id]: inv.amount.toLocaleString("tr-TR") }))
+                                                                }
+                                                                title="Tutari degistirmek icin tiklayin"
+                                                            >
+                                                                <span className="font-medium">{inv.amount.toLocaleString("tr-TR")} TL</span>
+                                                                <Pencil className="h-3 w-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                     <span className="text-xs text-slate-500">KDV: %{inv.kdvRate}</span>
                                                 </div>
                                             </TableCell>

@@ -138,6 +138,7 @@ export const Bookings = () => {
 
     useEffect(() => {
         fetchBookings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const fetchBookings = async () => {
@@ -165,7 +166,7 @@ export const Bookings = () => {
             toast({ title: "Başarılı", description: "Rezervasyon oluşturuldu." });
             setNewBookingOpen(false);
             fetchBookings();
-        } catch (error) {
+        } catch (_error) {
             toast({ title: "Hata", description: "Kaydedilemedi.", variant: "destructive" });
         }
     };
@@ -175,7 +176,7 @@ export const Bookings = () => {
             await updateDoc(doc(db, "bookings", id), { status: newStatus });
             toast({ title: "Güncellendi", description: "Rezervasyon durumu değiştirildi." });
             fetchBookings();
-        } catch (error) {
+        } catch (_error) {
             toast({ title: "Hata", description: "Durum güncellenemedi.", variant: "destructive" });
         }
     };
@@ -242,7 +243,7 @@ export const Bookings = () => {
             toast({ title: "Kaydedildi", description: "Araç durum bilgileri güncellendi." });
             setHandoverOpen(false);
             fetchBookings();
-        } catch (error) {
+        } catch (_error) {
             toast({ title: "Hata", description: "Kaydedilemedi.", variant: "destructive" });
         }
     };

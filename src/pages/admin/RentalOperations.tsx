@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Suspense } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation, Link } from "react-router-dom";
 import SignatureCanvas from "react-signature-canvas";
 import {
@@ -17,10 +17,9 @@ import {
     uploadBytes,
     getDownloadURL
 } from "firebase/storage";
-import { db, storage } from "@/integrations/firebase/client";
+import { db, storage, auth } from "@/integrations/firebase/client";
 import {
     Camera,
-    ImagePlus,
     Save,
     Car,
     RotateCcw,
@@ -34,7 +33,9 @@ import {
     Calendar,
     X,
     FileText,
-    Printer
+    Printer,
+    Wand2,
+    Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,129 +46,33 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter
+} from "@/components/ui/dialog";
 
 import { generateRentalContractPDF } from "@/utils/rentalContractPdf";
 import { compressImageForUpload } from "@/utils/imageCompression";
-import { analyzeDocumentOcr } from "@/utils/ai";
-import { auth } from "@/integrations/firebase/client";
-import { Sparkles } from "lucide-react";
+import { analyzeDocumentOcr, analyzeDamageComparison } from "@/utils/ai";
+import { sendRezervasyonOnay, sendIadeUyari, getWhatsAppErrorDescription } from "@/utils/whatsapp";
 
-type OperationStep = 'select' | 'customer' | 'checklist' | 'photos' | 'damage' | 'sign' | 'complete';
-type OperationType = 'delivery' | 'return';
-type RentalPricingMode = "daily" | "monthly";
+import type {
+    OperationStep, OperationType, RentalPricingMode,
+    OperationLocationState, OperationVehicle, OperationCustomer, OperationPhoto,
+} from "./rental-operations/types";
+import { INITIAL_CUSTOMER_FORM } from "./rental-operations/types";
+import {
+    formatTemplateDate as _formatTemplateDate,
+    getTemplateDateTime, normalizePhone, normalizePlate, pickString,
+    getDefaultDateTime, sanitizeNumber, buildFallbackCustomer,
+} from "./rental-operations/helpers";
 
-type BookingPayload = {
-    id?: string;
-    customerName?: string;
-    customerPhone?: string;
-    customerEmail?: string;
-    customerTckn?: string;
-    customerDriverLicenseNo?: string;
-    customerAddress?: string;
-    customerIdFrontUrl?: string;
-    customerIdBackUrl?: string;
-    customerLicenseFrontUrl?: string;
-    customerLicenseBackUrl?: string;
-    vehiclePlate?: string;
-    startDate?: string;
-    endDate?: string;
-};
-
-type OperationLocationState = {
-    booking?: BookingPayload;
-    type?: OperationType;
-};
-
-export type OperationVehicle = {
-    id: string;
-    plate: string;
-    name?: string;
-    brand?: string;
-    model?: string;
-    km?: number;
-    fuel?: string;
-    status?: string;
-    insurance_end_date?: string;
-    insurance_company?: string;
-    casco_end_date?: string;
-    casco_company?: string;
-    vin?: string;
-    chassisNo?: string;
-    [key: string]: unknown;
-};
-
-export type OperationCustomer = {
-    id?: string;
-    name: string;
-    phone: string;
-    email: string;
-    tckn: string;
-    driverLicenseClass: string;
-    driverLicenseNo?: string;
-    address?: string;
-    idFrontUrl?: string;
-    idBackUrl?: string;
-    licenseFrontUrl?: string;
-    licenseBackUrl?: string;
-    idSerialNo?: string;
-    idIssuePlace?: string;
-    idIssueDate?: string;
-    invoiceType?: 'individual' | 'corporate';
-    companyName?: string;
-    taxOffice?: string;
-    taxNumber?: string;
-    mersisNo?: string;
-    /** 2. şoför adı (müşteri 2. şoför istiyorsa) */
-    secondDriverName?: string;
-    /** 2. şoför ehliyet no */
-    secondDriverLicenseNo?: string;
-    /** 2. şoför ehliyet sınıfı */
-    secondDriverLicenseClass?: string;
-    /** 2. şoför ehliyet düzenlenme tarihi */
-    secondDriverLicenseDate?: string;
-};
-
-const formatTemplateDate = (datePart: string): string => {
-    if (!datePart) return new Date().toLocaleDateString("tr-TR");
-    const parsed = new Date(`${datePart}T00:00:00`);
-    if (Number.isNaN(parsed.getTime())) return datePart;
-    return parsed.toLocaleDateString("tr-TR");
-};
-
-const getTemplateDateTime = (dateTimeLocal: string, fallbackTime: string) => {
-    if (dateTimeLocal && dateTimeLocal.includes("T")) {
-        const [datePart, timePart = fallbackTime] = dateTimeLocal.split("T");
-        return {
-            date: formatTemplateDate(datePart),
-            time: timePart.slice(0, 5) || fallbackTime
-        };
-    }
-
-    const now = new Date();
-    return {
-        date: now.toLocaleDateString("tr-TR"),
-        time: now.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })
-    };
-};
-
-const normalizePhone = (value: string) => value.replace(/\D/g, "");
-
-const normalizePlate = (value: string) => value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-
-const pickString = (...values: Array<unknown>) => {
-    for (const value of values) {
-        if (typeof value === "string" && value.trim()) return value.trim();
-    }
-    return "";
-};
-
-const getDefaultDateTime = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}T10:00`;
-};
+// Types and helpers are now imported from ./rental-operations/
+export type { OperationVehicle, OperationCustomer } from "./rental-operations/types";
 
 export const RentalOperations = () => {
     const { toast } = useToast();
@@ -190,28 +95,28 @@ export const RentalOperations = () => {
     const [estimatedDamageCost, setEstimatedDamageCost] = useState("");
     const [fuelRefillCost, setFuelRefillCost] = useState("");
     const [customTotalRate, setCustomTotalRate] = useState(""); // Allows manual override of total rent
-    const [photos, setPhotos] = useState<{ url: string, angle: string }[]>([]);
+    const [photos, setPhotos] = useState<OperationPhoto[]>([]);
     const [uploading, setUploading] = useState(false);
-    const [previousPhotos, setPreviousPhotos] = useState<{ url: string, angle: string }[]>([]);
+    const [previousPhotos, setPreviousPhotos] = useState<OperationPhoto[]>([]);
     const [damagePoints] = useState<unknown[]>([]); // Sadece uyumluluk için, artık kullanılmıyor
+    const [aiAnalysis, setAiAnalysis] = useState<string>("");
+    const [analyzingDamage, setAnalyzingDamage] = useState(false);
 
     // Müşteri (operasyon)
     const [customers, setCustomers] = useState<OperationCustomer[]>([]);
     const [customersLoaded, setCustomersLoaded] = useState(false);
     const [selectedOperationCustomer, setSelectedOperationCustomer] = useState<OperationCustomer | null>(null);
     const [isNewCustomer, setIsNewCustomer] = useState(false);
-    const [customerForm, setCustomerForm] = useState<Partial<OperationCustomer>>({
-        name: "", phone: "", email: "", tckn: "", driverLicenseClass: "B", driverLicenseNo: "", address: "",
-        idSerialNo: "", idIssuePlace: "", idIssueDate: "",
-        invoiceType: "individual", companyName: "", taxOffice: "", taxNumber: "", mersisNo: "",
-        secondDriverName: "", secondDriverLicenseNo: "", secondDriverLicenseClass: "B", secondDriverLicenseDate: ""
-    });
+    const [customerForm, setCustomerForm] = useState<Partial<OperationCustomer>>(INITIAL_CUSTOMER_FORM);
+    
+    // Yeni Araç (Operasyondan Ekleme)
+    const [addVehicleOpen, setAddVehicleOpen] = useState(false);
+    const [addVehicleForm, setAddVehicleForm] = useState({ plate: "", name: "", category: "Binek", fuel: "Benzin", transmission: "Otomatik" });
+    const [addingVehicle, setAddingVehicle] = useState(false);
     const [idFrontFile, setIdFrontFile] = useState<File | null>(null);
     const [idBackFile, setIdBackFile] = useState<File | null>(null);
     const [licenseFrontFile, setLicenseFrontFile] = useState<File | null>(null);
     const [licenseBackFile, setLicenseBackFile] = useState<File | null>(null);
-    const operationPhotoCameraInputRef = useRef<HTMLInputElement | null>(null);
-    const operationPhotoGalleryInputRef = useRef<HTMLInputElement | null>(null);
 
     // Kiralama süresi (sözleşme)
     const [rentalStartDate, setRentalStartDate] = useState(getDefaultDateTime());
@@ -346,6 +251,44 @@ export const RentalOperations = () => {
         }
     };
 
+    const handleAddVehicleFromOps = async () => {
+        if (!addVehicleForm.plate.trim() || !addVehicleForm.name.trim()) {
+            toast({ title: "Zorunlu Alanlar", description: "Plaka ve Araç Adı zorunludur.", variant: "destructive" });
+            return;
+        }
+        setAddingVehicle(true);
+        try {
+            const payload = {
+                plate: addVehicleForm.plate.toUpperCase(),
+                name: addVehicleForm.name,
+                category: addVehicleForm.category,
+                fuel: addVehicleForm.fuel,
+                transmission: addVehicleForm.transmission,
+                status: "active",
+                km: 0,
+                price: "0",
+                daily_price: "0",
+                passengers: 5,
+                image_url: "",
+                image_urls: []
+            };
+            const vRef = await addDoc(collection(db, "vehicles"), payload);
+            toast({ title: "Başarılı", description: "Yeni araç eklendi." });
+            setAddVehicleOpen(false);
+            setAddVehicleForm({ plate: "", name: "", category: "Binek", fuel: "Benzin", transmission: "Otomatik" });
+            fetchVehicles(); // Listeyi yenile
+            
+            // Otomatik seç
+            const newV = { id: vRef.id, ...payload } as unknown as OperationVehicle;
+            handleVehicleSelect(newV);
+        } catch (e: unknown) {
+            const err = e as Error;
+            toast({ title: "Hata", description: "Araç eklenemedi: " + err.message, variant: "destructive" });
+        } finally {
+            setAddingVehicle(false);
+        }
+    };
+
     const handleVehicleSelect = async (v: OperationVehicle) => {
         setSelectedVehicle(v);
         // Önceki operasyon (teslimat veya iade) fotoğraflarını getir
@@ -362,7 +305,7 @@ export const RentalOperations = () => {
             if (!opsn.empty) {
                 const lastOp = opsn.docs[0].data();
                 if (lastOp.photos && Array.isArray(lastOp.photos)) {
-                    setPreviousPhotos(lastOp.photos as { url: string, angle: string }[]);
+                    setPreviousPhotos(lastOp.photos as OperationPhoto[]);
                 }
             }
         } catch (err) {
@@ -373,21 +316,37 @@ export const RentalOperations = () => {
     const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, angle: string) => {
         const files = Array.from(e.target.files || []);
         if (!files.length) return;
+
+        if (photos.length + files.length > 10) {
+            toast({
+                title: "Fotoğraf Sınırı",
+                description: "En fazla 10 adet fotoğraf yükleyebilirsiniz.",
+                variant: "destructive"
+            });
+            return;
+        }
+
         setUploading(true);
         try {
             const uploadedUrls: Array<{ url: string; angle: string }> = [];
             for (const file of files) {
                 const optimizedFile = await compressImageForUpload(file);
-                const path = `operations/${operationType}/${Date.now()}_${optimizedFile.name}`;
+                // Fotoğrafları operations klasörü altında, plaka ve işlem tipine göre organize ediyoruz
+                const plate = selectedVehicle?.plate || "unknown";
+                const timestamp = Date.now();
+                const path = `operations/${plate}/${operationType}/${timestamp}_${optimizedFile.name}`;
+
                 const r = ref(storage, path);
                 const snap = await uploadBytes(r, optimizedFile, { contentType: optimizedFile.type });
                 const url = await getDownloadURL(snap.ref);
                 uploadedUrls.push({ url, angle });
             }
             setPhotos((prev) => [...prev, ...uploadedUrls]);
-        } catch (error) {
+        } catch (error: unknown) {
             console.error("Fotoğraf yükleme hatası:", error);
-            toast({ title: "Hata", description: "Fotoğraf yüklenemedi.", variant: "destructive" });
+            const err = error as { message?: string; code?: string };
+            const errMsg = err.message || err.code || JSON.stringify(error) || "Bilinmeyen hata";
+            toast({ title: "Hata", description: `Fotoğraf yüklenemedi: ${errMsg}`, variant: "destructive" });
         } finally {
             e.target.value = "";
             setUploading(false);
@@ -398,7 +357,7 @@ export const RentalOperations = () => {
     const handleOcrAnalysis = async (file: File) => {
         if (!file) return;
         setLoading(true);
-        toast({ title: "Yapay Zeka", description: "Belge çözümleniyor...", icon: <Sparkles className="animate-pulse" /> });
+        toast({ title: "Yapay Zeka", description: "Belge çözümleniyor..." });
         try {
             const result = await analyzeDocumentOcr(file);
             if (result) {
@@ -422,12 +381,6 @@ export const RentalOperations = () => {
         }
     };
 
-    const triggerFileInput = (input: HTMLInputElement | null) => {
-        if (!input) return;
-        input.value = "";
-        input.click();
-    };
-
     const handleSaveNewCustomer = async () => {
         const normalizedName = (customerForm.name || "").trim() || "Misafir Musteri";
         const normalizedPhone = (customerForm.phone || "").trim() || "-";
@@ -438,21 +391,9 @@ export const RentalOperations = () => {
                 description: "Musteri formu eksik oldugu icin varsayilan ad/telefon ile kaydedildi.",
             });
         }
-
         setLoading(true);
         try {
-            if ((customerForm.invoiceType || "individual") === "corporate") {
-                if (!(customerForm.taxNumber || "").trim() || !(customerForm.mersisNo || "").trim()) {
-                    toast({
-                        title: "Eksik bilgi",
-                        description: "Kurumsal musteri icin Vergi No ve MERSIS zorunludur.",
-                        variant: "destructive"
-                    });
-                    setLoading(false);
-                    return;
-                }
-            }
-
+            // Zorunlu alan kontrolü tamamen kaldırıldı, eksik veriler olsa da form kaydedilir.
             const payload: Record<string, unknown> = {
                 name: normalizedName,
                 phone: normalizedPhone,
@@ -548,7 +489,7 @@ export const RentalOperations = () => {
             };
             setSelectedOperationCustomer(newCustomer);
             setIsNewCustomer(false);
-            setCustomerForm({ name: "", phone: "", email: "", tckn: "", driverLicenseClass: "B", driverLicenseNo: "", address: "", idSerialNo: "", idIssuePlace: "", idIssueDate: "", invoiceType: "individual", companyName: "", taxOffice: "", taxNumber: "", mersisNo: "", secondDriverName: "", secondDriverLicenseNo: "", secondDriverLicenseClass: "B", secondDriverLicenseDate: "" });
+            setCustomerForm(INITIAL_CUSTOMER_FORM);
             setIdFrontFile(null); setIdBackFile(null); setLicenseFrontFile(null); setLicenseBackFile(null);
             fetchCustomers();
             toast({ title: "Başarılı", description: "Müşteri eklendi. Devam edin." });
@@ -560,13 +501,7 @@ export const RentalOperations = () => {
         }
     };
 
-    const sanitizeNumber = (val: string | number): number => {
-        if (typeof val === 'number') return isNaN(val) ? 0 : val;
-        // Remove dots (used as thousands separator in TR) and replace comma with dot
-        const sanitized = val.replace(/\./g, "").replace(",", ".");
-        const result = Number(sanitized);
-        return isNaN(result) ? 0 : result;
-    };
+    // sanitizeNumber is now imported from helpers
 
     const getRentalDayCount = () => {
         if (!rentalStartDate || !rentalEndDate) return 1;
@@ -594,36 +529,12 @@ export const RentalOperations = () => {
         return getEstimatedRentalTotal();
     };
 
-    const buildFallbackCustomer = (): OperationCustomer => ({
-        id: "",
-        name: (customerForm.name || "").trim() || "Misafir Musteri",
-        phone: (customerForm.phone || "").trim() || "-",
-        email: (customerForm.email || "").trim(),
-        tckn: (customerForm.tckn || "").trim(),
-        driverLicenseClass: customerForm.driverLicenseClass || "B",
-        driverLicenseNo: (customerForm.driverLicenseNo || "").trim(),
-        address: (customerForm.address || "").trim(),
-        idSerialNo: (customerForm.idSerialNo || "").trim(),
-        idIssuePlace: (customerForm.idIssuePlace || "").trim(),
-        idIssueDate: (customerForm.idIssueDate || "").trim(),
-        idFrontUrl: customerForm.idFrontUrl || "",
-        idBackUrl: customerForm.idBackUrl || "",
-        licenseFrontUrl: customerForm.licenseFrontUrl || "",
-        licenseBackUrl: customerForm.licenseBackUrl || "",
-        invoiceType: customerForm.invoiceType || "individual",
-        companyName: (customerForm.companyName || "").trim(),
-        taxOffice: (customerForm.taxOffice || "").trim(),
-        taxNumber: (customerForm.taxNumber || "").trim(),
-        mersisNo: (customerForm.mersisNo || "").trim(),
-        secondDriverName: (customerForm.secondDriverName || "").trim() || undefined,
-        secondDriverLicenseNo: (customerForm.secondDriverLicenseNo || "").trim() || undefined,
-        secondDriverLicenseClass: (customerForm.secondDriverLicenseClass || "B").trim() || undefined,
-        secondDriverLicenseDate: (customerForm.secondDriverLicenseDate || "").trim() || undefined,
-    });
+    // buildFallbackCustomer is now imported from helpers — wrap with current form
+    const buildCurrentFallbackCustomer = () => buildFallbackCustomer(customerForm);
 
     const handleContinueFromCustomer = () => {
         if (!selectedOperationCustomer) {
-            setSelectedOperationCustomer(buildFallbackCustomer());
+            setSelectedOperationCustomer(buildCurrentFallbackCustomer());
             toast({
                 title: "Bilgi",
                 description: "Musteri bilgileri eksik oldugu icin misafir musteri ile devam edildi.",
@@ -638,7 +549,7 @@ export const RentalOperations = () => {
             return;
         }
 
-        const effectiveCustomer = selectedOperationCustomer || buildFallbackCustomer();
+        const effectiveCustomer = selectedOperationCustomer || buildCurrentFallbackCustomer();
 
         const kmValue = sanitizeNumber(km);
         const damageCostValue = sanitizeNumber(estimatedDamageCost);
@@ -747,6 +658,8 @@ export const RentalOperations = () => {
                 monthlyRate: sanitizeNumber(monthlyRate),
                 rentalDayCount,
                 rentalMonthCount,
+                rentalStartDate,
+                rentalEndDate,
                 bookingTotalPrice: rentalBaseAmount,
                 invoiceAmount: rentalBaseAmount,
                 invoiceApprovalStatus: "pending",
@@ -943,7 +856,6 @@ export const RentalOperations = () => {
         } catch (error: unknown) {
             console.error("Operation Error Details:", error);
             const errorMsg = (error && typeof error === "object" && "message" in error ? String((error as { message?: unknown }).message) : null) || "Bilinmeyen hata";
-            alert(`İşlem hatası: ${errorMsg}`);
             toast({
                 title: "Hata",
                 description: `Kayıt oluşturulamadı: ${errorMsg}`,
@@ -1090,7 +1002,6 @@ export const RentalOperations = () => {
                     setStep('select');
                     setSourceBookingId(null);
                     setPhotos([]);
-                    setDamagePoints([]);
                     setKm("");
                     setFuelLevel("empty");
                     setNotes("");
@@ -1119,6 +1030,53 @@ export const RentalOperations = () => {
 
     return (
         <div className="container max-w-2xl mx-auto py-6 space-y-6">
+            <Dialog open={addVehicleOpen} onOpenChange={setAddVehicleOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Yeni Araç Ekle</DialogTitle>
+                        <DialogDescription>Hızlıca operasyon sistemine yeni araç kaydedin.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Plaka *</Label>
+                                <Input value={addVehicleForm.plate} onChange={e => setAddVehicleForm(prev => ({...prev, plate: e.target.value}))} placeholder="34 ABC 123" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Marka / Model *</Label>
+                                <Input value={addVehicleForm.name} onChange={e => setAddVehicleForm(prev => ({...prev, name: e.target.value}))} placeholder="Renault Clio" />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Yakıt</Label>
+                                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={addVehicleForm.fuel} onChange={e => setAddVehicleForm(prev => ({...prev, fuel: e.target.value}))}>
+                                    <option value="Benzin">Benzin</option>
+                                    <option value="Dizel">Dizel</option>
+                                    <option value="Elektrik">Elektrik</option>
+                                    <option value="Hibrit">Hibrit</option>
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Vites</Label>
+                                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={addVehicleForm.transmission} onChange={e => setAddVehicleForm(prev => ({...prev, transmission: e.target.value}))}>
+                                    <option value="Otomatik">Otomatik</option>
+                                    <option value="Manuel">Manuel</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Kategori</Label>
+                            <Input value={addVehicleForm.category} onChange={e => setAddVehicleForm(prev => ({...prev, category: e.target.value}))} placeholder="Binek, SUV vs." />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setAddVehicleOpen(false)}>İptal</Button>
+                        <Button onClick={handleAddVehicleFromOps} disabled={addingVehicle}>{addingVehicle ? 'Ekleniyor...' : 'Kaydet'}</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold font-sans">Operasyon</h2>
                 <Badge variant="outline" className="text-lg py-1 px-3">
@@ -1158,7 +1116,12 @@ export const RentalOperations = () => {
                     </div>
 
                     <div className="space-y-4">
-                        <Label>Araç Seçin</Label>
+                        <div className="flex items-center justify-between">
+                            <Label>Araç Seçin</Label>
+                            <Button variant="outline" size="sm" onClick={() => setAddVehicleOpen(true)}>
+                                + Yeni Araç Ekle
+                            </Button>
+                        </div>
                         <Input placeholder="Plaka ara..." onChange={(_e) => {
                             // Simple local filter for demo
                         }} />
@@ -1223,38 +1186,10 @@ export const RentalOperations = () => {
 
                         {isNewCustomer && (
                             <div className="space-y-3">
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-1"><Label>Ad Soyad *</Label><Input value={customerForm.name} onChange={e => setCustomerForm(f => ({ ...f, name: e.target.value }))} placeholder="Ad Soyad" /></div>
-                                    <div className="space-y-1"><Label>Telefon *</Label><Input value={customerForm.phone} onChange={e => setCustomerForm(f => ({ ...f, phone: e.target.value }))} placeholder="0532 123 45 67" /></div>
-                                </div>
-                                <div className="space-y-1"><Label>E-posta</Label><Input type="email" value={customerForm.email} onChange={e => setCustomerForm(f => ({ ...f, email: e.target.value }))} placeholder="ornek@email.com" /></div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {customerForm.invoiceType === "corporate" ? (
-                                        <>
-                                            <div className="space-y-1"><Label>Vergi No (VKN) *</Label><Input required value={customerForm.taxNumber} onChange={e => setCustomerForm(f => ({ ...f, taxNumber: e.target.value }))} placeholder="10 haneli VKN" maxLength={10} /></div>
-                                            <div className="space-y-1"><Label>MERSIS No *</Label><Input required value={customerForm.mersisNo} onChange={e => setCustomerForm(f => ({ ...f, mersisNo: e.target.value }))} placeholder="16 haneli MERSIS" maxLength={16} /></div>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <div className="space-y-1"><Label>TC Kimlik No</Label><Input value={customerForm.tckn} onChange={e => setCustomerForm(f => ({ ...f, tckn: e.target.value }))} placeholder="11 haneli" maxLength={11} /></div>
-                                            <div className="space-y-1"><Label>Ehliyet No</Label><Input value={customerForm.driverLicenseNo} onChange={e => setCustomerForm(f => ({ ...f, driverLicenseNo: e.target.value }))} placeholder="Ehliyet no" /></div>
-                                        </>
-                                    )}
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-1"><Label>Ehliyet sınıfı</Label>
-                                        <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={customerForm.driverLicenseClass} onChange={e => setCustomerForm(f => ({ ...f, driverLicenseClass: e.target.value }))}>
-                                            <option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option>
-                                        </select>
-                                    </div>
-                                    <div className="space-y-1"><Label>Ehliyet / Kimlik tarihi</Label><Input value={customerForm.idIssueDate} onChange={e => setCustomerForm(f => ({ ...f, idIssueDate: e.target.value }))} placeholder="GG/AA/YYYY" /></div>
-                                </div>
-                                <div className="space-y-1"><Label>Adres</Label><Input value={customerForm.address} onChange={e => setCustomerForm(f => ({ ...f, address: e.target.value }))} placeholder="Adres" /></div>
-
                                 <div className="space-y-1">
-                                    <Label>Fatura Tipi</Label>
+                                    <Label className="font-semibold text-primary">Fatura Tipi (Kurumsal / Bireysel)</Label>
                                     <select
-                                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                        className="flex h-11 w-full rounded-md border-2 border-primary/20 bg-background px-3 py-2 text-sm font-medium focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary"
                                         value={customerForm.invoiceType}
                                         onChange={e =>
                                             setCustomerForm(f => {
@@ -1274,12 +1209,41 @@ export const RentalOperations = () => {
                                     </select>
                                 </div>
 
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1"><Label>Ad Soyad</Label><Input value={customerForm.name} onChange={e => setCustomerForm(f => ({ ...f, name: e.target.value }))} placeholder="Ad Soyad" /></div>
+                                    <div className="space-y-1"><Label>Telefon</Label><Input value={customerForm.phone} onChange={e => setCustomerForm(f => ({ ...f, phone: e.target.value }))} placeholder="0532 123 45 67" /></div>
+                                </div>
+                                <div className="space-y-1"><Label>E-posta</Label><Input type="email" value={customerForm.email} onChange={e => setCustomerForm(f => ({ ...f, email: e.target.value }))} placeholder="ornek@email.com" /></div>
+
                                 {customerForm.invoiceType === 'corporate' && (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 border border-slate-200 rounded-lg bg-slate-50">
-                                        <div className="space-y-1"><Label>Firma Ünvanı *</Label><Input required value={customerForm.companyName} onChange={e => setCustomerForm(f => ({ ...f, companyName: e.target.value }))} placeholder="Örn: ABC A.Ş." /></div>
-                                        <div className="space-y-1"><Label>Vergi Dairesi *</Label><Input required value={customerForm.taxOffice} onChange={e => setCustomerForm(f => ({ ...f, taxOffice: e.target.value }))} placeholder="Örn: Seyhan V.D." /></div>
+                                        <div className="space-y-1"><Label>Firma Ünvanı</Label><Input value={customerForm.companyName} onChange={e => setCustomerForm(f => ({ ...f, companyName: e.target.value }))} placeholder="Örn: ABC A.Ş." /></div>
+                                        <div className="space-y-1"><Label>Vergi Dairesi</Label><Input value={customerForm.taxOffice} onChange={e => setCustomerForm(f => ({ ...f, taxOffice: e.target.value }))} placeholder="Örn: Seyhan V.D." /></div>
                                     </div>
                                 )}
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    {customerForm.invoiceType === "corporate" ? (
+                                        <>
+                                            <div className="space-y-1"><Label>Vergi No (VKN)</Label><Input value={customerForm.taxNumber} onChange={e => setCustomerForm(f => ({ ...f, taxNumber: e.target.value }))} placeholder="10 haneli VKN" maxLength={10} /></div>
+                                            <div className="space-y-1"><Label>MERSIS No</Label><Input value={customerForm.mersisNo} onChange={e => setCustomerForm(f => ({ ...f, mersisNo: e.target.value }))} placeholder="16 haneli MERSIS" maxLength={16} /></div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="space-y-1"><Label>TC Kimlik No</Label><Input value={customerForm.tckn} onChange={e => setCustomerForm(f => ({ ...f, tckn: e.target.value }))} placeholder="11 haneli" maxLength={11} /></div>
+                                            <div className="space-y-1"><Label>Ehliyet No</Label><Input value={customerForm.driverLicenseNo} onChange={e => setCustomerForm(f => ({ ...f, driverLicenseNo: e.target.value }))} placeholder="Ehliyet no" /></div>
+                                        </>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1"><Label>Ehliyet sınıfı</Label>
+                                        <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={customerForm.driverLicenseClass} onChange={e => setCustomerForm(f => ({ ...f, driverLicenseClass: e.target.value }))}>
+                                            <option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1"><Label>Ehliyet / Kimlik tarihi</Label><Input value={customerForm.idIssueDate} onChange={e => setCustomerForm(f => ({ ...f, idIssueDate: e.target.value }))} placeholder="GG/AA/YYYY" /></div>
+                                </div>
+                                <div className="space-y-1"><Label>Adres</Label><Input value={customerForm.address} onChange={e => setCustomerForm(f => ({ ...f, address: e.target.value }))} placeholder="Adres" /></div>
 
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1"><Label>Kimlik seri no</Label><Input value={customerForm.idSerialNo} onChange={e => setCustomerForm(f => ({ ...f, idSerialNo: e.target.value }))} placeholder="Seri no" /></div>
@@ -1624,82 +1588,11 @@ export const RentalOperations = () => {
                         <Button variant="outline" className="h-12 px-6" onClick={() => setStep('customer')}>
                             ← Geri
                         </Button>
-                        <Button className="flex-1 h-12" onClick={() => setStep('photos')}>Devam Et</Button>
-                    </div>
-                </div>
-            )}
-
-            {step === 'photos' && (
-                <div className="space-y-6">
-                    <Card className="p-4 space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h3 className="font-semibold text-lg flex items-center gap-2">
-                                <Camera className="w-5 h-5" /> Fotoğraflar
-                            </h3>
-                            <span className="text-sm text-slate-500">{photos.length} yüklendi</span>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <button
-                                type="button"
-                                className="flex flex-col items-center justify-center aspect-square bg-slate-100 rounded-lg border-2 border-dashed border-slate-300 cursor-pointer hover:bg-slate-50 disabled:opacity-60"
-                                onClick={() => triggerFileInput(operationPhotoCameraInputRef.current)}
-                                disabled={uploading}
-                            >
-                                {uploading ? <Loader2 className="w-8 h-8 animate-spin" /> : <Camera className="w-8 h-8 text-slate-400" />}
-                                <span className="text-xs mt-2 font-medium text-slate-600">Kamera ile çek</span>
-                            </button>
-                            <button
-                                type="button"
-                                className="flex flex-col items-center justify-center aspect-square bg-slate-100 rounded-lg border-2 border-dashed border-slate-300 cursor-pointer hover:bg-slate-50 disabled:opacity-60"
-                                onClick={() => triggerFileInput(operationPhotoGalleryInputRef.current)}
-                                disabled={uploading}
-                            >
-                                <ImagePlus className="w-8 h-8 text-slate-400" />
-                                <span className="text-xs mt-2 font-medium text-slate-600">Galeriden seç</span>
-                            </button>
-                            <input
-                                ref={operationPhotoCameraInputRef}
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                className="hidden"
-                                onChange={(e) => handlePhotoUpload(e, "general")}
-                                disabled={uploading}
-                            />
-                            <input
-                                ref={operationPhotoGalleryInputRef}
-                                type="file"
-                                accept="image/*"
-                                multiple
-                                className="hidden"
-                                onChange={(e) => handlePhotoUpload(e, "general")}
-                                disabled={uploading}
-                            />
-                            {photos.map((photo, i) => (
-                                <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-black">
-                                    <img src={photo.url} className="w-full h-full object-cover" />
-                                    <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] py-1 px-2 text-center">
-                                        {photo.angle}
-                                    </div>
-                                    <button
-                                        className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1"
-                                        onClick={() => setPhotos(photos.filter((_, idx) => idx !== i))}
-                                    >
-                                        <X className="w-3 h-3" />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </Card>
-                    <div className="flex gap-3">
-                        <Button variant="outline" className="h-12 px-6" onClick={() => setStep('checklist')}>
-                            ← Geri
-                        </Button>
                         <Button className="flex-1 h-12" onClick={() => setStep('damage')}>Devam Et</Button>
                     </div>
                 </div>
             )}
+
             {step === 'damage' && (
                 <div className="space-y-6">
                     <Card className="p-4 space-y-4">
@@ -1730,6 +1623,102 @@ export const RentalOperations = () => {
                             </div>
                         )}
 
+                        <div className="space-y-4 pt-4 border-t">
+                            <div className="flex items-center justify-between">
+                                <h3 className="font-semibold text-base flex items-center gap-2">
+                                    <Camera className="w-4 h-4" /> Güncel Araç Fotoğrafları (Maks. 10)
+                                </h3>
+                                <span className="text-xs text-slate-500">{photos.length}/10</span>
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <PhotoInput
+                                    onChange={(e) => handlePhotoUpload(e, "Genel")}
+                                    multiple
+                                    loading={uploading}
+                                    variant="cards"
+                                    labelCamera="Fotoğraf Çek"
+                                    labelGallery="Galeri"
+                                    className="col-span-2 md:col-span-1"
+                                    disabled={photos.length >= 10}
+                                />
+
+                                {photos.map((photo, i) => (
+                                    <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-black group border border-slate-200">
+                                        <img src={photo.url} className="w-full h-full object-cover" alt={`Araç Foto ${i + 1}`} />
+                                        <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] py-1 px-2 text-center">
+                                            Araç Foto {i + 1}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="absolute top-1 right-1 bg-red-500/80 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            onClick={() => setPhotos(photos.filter((_, idx) => idx !== i))}
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+
+                                {photos.length === 0 && !uploading && (
+                                    <div className="col-span-2 py-4 text-center border-2 border-dashed border-slate-200 rounded-xl bg-slate-50">
+                                        <p className="text-xs text-slate-500">Henüz fotoğraf eklenmedi.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {photos.length > 0 && (
+                            <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-sm font-semibold text-blue-900 flex items-center gap-2">
+                                        <Sparkles className="w-4 h-4" /> Yapay Zeka Hasar Analizi
+                                    </h4>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-8 border-blue-200 text-blue-700 hover:bg-blue-100"
+                                        type="button"
+                                        onClick={async () => {
+                                            if (photos.length === 0) return;
+                                            setAnalyzingDamage(true);
+                                            try {
+                                                const lastPhotoUrl = photos[photos.length - 1].url;
+                                                const response = await fetch(lastPhotoUrl);
+                                                const blob = await response.blob();
+                                                const file = new File([blob], "vehicle_photo.jpg", { type: "image/jpeg" });
+
+                                                const analysis = await analyzeDamageComparison(file, previousPhotos.map(p => p.url));
+                                                setAiAnalysis(analysis);
+                                                if (!analysis.toLowerCase().includes("hasar tespit edilmedi")) {
+                                                    setNotes(prev => prev ? `${prev}\n\nAI Analizi: ${analysis}` : `AI Analizi: ${analysis}`);
+                                                }
+                                                toast({ title: "Analiz Hazır", description: "Yapay zeka fotoğrafı inceledi." });
+                                            } catch (err) {
+                                                console.error("AI Analysis Error:", err);
+                                                toast({ title: "Hata", description: "Analiz sırasında bir sorun oluştu.", variant: "destructive" });
+                                            } finally {
+                                                setAnalyzingDamage(false);
+                                            }
+                                        }}
+                                        disabled={analyzingDamage}
+                                    >
+                                        {analyzingDamage ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Wand2 className="w-3.5 h-3.5 mr-1" />}
+                                        Analiz Et
+                                    </Button>
+                                </div>
+                                {aiAnalysis && (
+                                    <div className="bg-white/80 p-3 rounded-lg text-xs leading-relaxed text-blue-800 border border-blue-200 animate-in fade-in slide-in-from-top-1">
+                                        {aiAnalysis}
+                                    </div>
+                                )}
+                                {!aiAnalysis && !analyzingDamage && (
+                                    <p className="text-[11px] text-blue-600/70 italic">
+                                        Son yüklediğiniz fotoğrafı hasar yönünden incelemek için butona basın.
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
                         <div className="space-y-2">
                             <Label>Hasar Notları / Tespitler</Label>
                             <Textarea
@@ -1751,7 +1740,7 @@ export const RentalOperations = () => {
                         </div>
                     </Card>
                     <div className="flex gap-3">
-                        <Button variant="outline" className="h-12 px-6" onClick={() => setStep('photos')}>
+                        <Button variant="outline" className="h-12 px-6" onClick={() => setStep('checklist')}>
                             ← Geri
                         </Button>
                         <Button className="flex-1 h-12" onClick={() => setStep('sign')}>Devam Et</Button>

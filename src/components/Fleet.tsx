@@ -93,22 +93,23 @@ export const Fleet = () => {
   const filteredVehicles = useMemo(() => {
     return vehicles.filter((v) => {
       if (categoryFilter !== "all" && v.category !== categoryFilter) return false;
-      if (fuelFilter !== "all" && !v.fuel.toLowerCase().includes(fuelFilter.toLowerCase())) return false;
-      if (transmissionFilter !== "all" && !v.transmission.toLowerCase().includes(transmissionFilter.toLowerCase())) return false;
+      if (fuelFilter !== "all" && !(v.fuel || "").toLowerCase().includes(fuelFilter.toLowerCase())) return false;
+      if (transmissionFilter !== "all" && !(v.transmission || "").toLowerCase().includes(transmissionFilter.toLowerCase())) return false;
       return true;
     });
   }, [vehicles, categoryFilter, fuelFilter, transmissionFilter]);
 
   const categories = useMemo(() => {
-    const set = new Set(vehicles.map((v) => v.category));
+    const set = new Set(vehicles.map((v) => v.category).filter((c) => c && c !== "empty"));
     return Array.from(set).sort((a, b) => a.localeCompare(b, "tr"));
   }, [vehicles]);
 
   const fuelTypes = useMemo(() => {
     const set = new Set<string>();
     vehicles.forEach((v) => {
+      if (!v.fuel || v.fuel === "empty") return;
       const parts = v.fuel.split("/").map((f) => f.trim());
-      parts.forEach((p) => set.add(p));
+      parts.forEach((p) => { if (p && p !== "empty") set.add(p); });
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b, "tr"));
   }, [vehicles]);
@@ -221,9 +222,11 @@ export const Fleet = () => {
                 loading="lazy"
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
               />
-              <Badge className="absolute top-4 right-4 bg-primary text-white">
-                {vehicle.category}
-              </Badge>
+              {vehicle.category && (
+                <Badge className="absolute top-4 right-4 bg-primary text-white">
+                  {vehicle.category}
+                </Badge>
+              )}
             </div>
 
             {/* Content */}
@@ -235,18 +238,24 @@ export const Fleet = () => {
 
                 {/* Specs */}
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-1">
-                    <Users className="w-4 h-4" />
-                    <span>{vehicle.passengers}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Fuel className="w-4 h-4" />
-                    <span>{vehicle.fuel}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Settings className="w-4 h-4" />
-                    <span>{vehicle.transmission}</span>
-                  </div>
+                  {vehicle.passengers && (
+                    <div className="flex items-center gap-1">
+                      <Users className="w-4 h-4" />
+                      <span>{vehicle.passengers}</span>
+                    </div>
+                  )}
+                  {vehicle.fuel && vehicle.fuel !== "empty" && (
+                    <div className="flex items-center gap-1">
+                      <Fuel className="w-4 h-4" />
+                      <span>{vehicle.fuel}</span>
+                    </div>
+                  )}
+                  {vehicle.transmission && vehicle.transmission !== "empty" && (
+                    <div className="flex items-center gap-1">
+                      <Settings className="w-4 h-4" />
+                      <span>{vehicle.transmission}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -373,9 +382,11 @@ export const Fleet = () => {
                     alt={selectedVehicle.name}
                     className="w-full h-full object-cover"
                   />
-                  <Badge className="absolute top-4 right-4 bg-primary text-white text-lg px-3 py-1">
-                    {selectedVehicle.category}
-                  </Badge>
+                  {selectedVehicle.category && (
+                    <Badge className="absolute top-4 right-4 bg-primary text-white text-lg px-3 py-1">
+                      {selectedVehicle.category}
+                    </Badge>
+                  )}
                 </div>
 
                 <div className="p-6 space-y-6">
@@ -397,18 +408,24 @@ export const Fleet = () => {
                   </DialogHeader>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-y border-border">
-                    <div className="flex flex-col items-center gap-2 p-3 bg-muted/30 rounded-lg text-center">
-                      <Users className="w-6 h-6 text-primary" />
-                      <span className="text-sm font-medium">{selectedVehicle.passengers} Yolcu</span>
-                    </div>
-                    <div className="flex flex-col items-center gap-2 p-3 bg-muted/30 rounded-lg text-center">
-                      <Fuel className="w-6 h-6 text-primary" />
-                      <span className="text-sm font-medium">{selectedVehicle.fuel}</span>
-                    </div>
-                    <div className="flex flex-col items-center gap-2 p-3 bg-muted/30 rounded-lg text-center">
-                      <Settings className="w-6 h-6 text-primary" />
-                      <span className="text-sm font-medium">{selectedVehicle.transmission}</span>
-                    </div>
+                    {selectedVehicle.passengers && (
+                      <div className="flex flex-col items-center gap-2 p-3 bg-muted/30 rounded-lg text-center">
+                        <Users className="w-6 h-6 text-primary" />
+                        <span className="text-sm font-medium">{selectedVehicle.passengers} Yolcu</span>
+                      </div>
+                    )}
+                    {selectedVehicle.fuel && selectedVehicle.fuel !== "empty" && (
+                      <div className="flex flex-col items-center gap-2 p-3 bg-muted/30 rounded-lg text-center">
+                        <Fuel className="w-6 h-6 text-primary" />
+                        <span className="text-sm font-medium">{selectedVehicle.fuel}</span>
+                      </div>
+                    )}
+                    {selectedVehicle.transmission && selectedVehicle.transmission !== "empty" && (
+                      <div className="flex flex-col items-center gap-2 p-3 bg-muted/30 rounded-lg text-center">
+                        <Settings className="w-6 h-6 text-primary" />
+                        <span className="text-sm font-medium">{selectedVehicle.transmission}</span>
+                      </div>
+                    )}
                     <div className="flex flex-col items-center gap-2 p-3 bg-muted/30 rounded-lg text-center">
                       <Check className="w-6 h-6 text-primary" />
                       <span className="text-sm font-medium">Kasko Dahil</span>

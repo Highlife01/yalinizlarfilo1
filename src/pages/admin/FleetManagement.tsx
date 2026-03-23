@@ -206,6 +206,7 @@ export const FleetManagement = () => {
 
     useEffect(() => {
         fetchVehicles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -448,6 +449,9 @@ export const FleetManagement = () => {
             const passengers = Math.max(1, Number(cols[7] || 5));
             const status = normalizeVehicleStatus(cols[8]);
             const km = Math.max(0, Number(cols[9] || 0));
+            const tuvturkDate = cols[10] || ""; // YYYY-MM-DD
+            const insuranceDate = cols[11] || "";
+            const cascoDate = cols[12] || "";
 
             if (!name || !plate) {
                 skippedRows.push(lineIndex + 1);
@@ -479,11 +483,11 @@ export const FleetManagement = () => {
                 cost_per_rental: 0,
                 insurance_company: "",
                 insurance_start_date: "",
-                insurance_end_date: "",
+                insurance_end_date: insuranceDate,
                 casco_company: "",
                 casco_start_date: "",
-                casco_end_date: "",
-                tuvturk_end_date: "",
+                casco_end_date: cascoDate,
+                tuvturk_end_date: tuvturkDate,
                 registration_photo_url: ""
             });
         });
@@ -572,7 +576,7 @@ export const FleetManagement = () => {
             setDialogOpen(false);
             resetForm();
             fetchVehicles();
-        } catch (error) {
+        } catch (_error) {
             toast({ title: "Hata", description: "İşlem sırasında bir sorun oluştu.", variant: "destructive" });
         }
     };
@@ -583,7 +587,7 @@ export const FleetManagement = () => {
             await deleteDoc(doc(db, "vehicles", id));
             toast({ title: "Silindi", description: "Araç sistemden kaldırıldı." });
             fetchVehicles();
-        } catch (error) {
+        } catch (_error) {
             toast({ title: "Hata", description: "Silme islemi basarisiz.", variant: "destructive" });
         }
     };
@@ -608,7 +612,7 @@ export const FleetManagement = () => {
                 title: "Durum Guncellendi",
                 description: `Arac durumu ${getStatusLabel(newStatus)} olarak guncellendi.`
             });
-        } catch (error) {
+        } catch (_error) {
             toast({ title: "Hata", description: "Durum guncellenirken bir sorun olustu.", variant: "destructive" });
         }
     };
@@ -723,13 +727,15 @@ export const FleetManagement = () => {
         }
     };
 
-    // Filter Logic
-    const filteredVehicles = vehicles.filter(v => {
-        const matchesSearch = v.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            v.plate.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesStatus = statusFilter === "all" || v.status === statusFilter;
-        return matchesSearch && matchesStatus;
-    });
+    // Filter & Sort Logic
+    const filteredVehicles = vehicles
+        .filter(v => {
+            const matchesSearch = v.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                v.plate.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesStatus = statusFilter === "all" || v.status === statusFilter;
+            return matchesSearch && matchesStatus;
+        })
+        .sort((a, b) => a.name.localeCompare(b.name, "tr"));
 
     // Araç başı masraf (vehicle_costs → vehicleId) ve ciro (payments → vehiclePlate)
     const { costByVehicleId, revenueByPlate } = useMemo(() => {
@@ -828,7 +834,7 @@ export const FleetManagement = () => {
                     <div>
                         <h3 className="text-sm font-semibold text-slate-900">Toplu Arac Girisi</h3>
                         <p className="text-xs text-slate-500">
-                            Her satir bir arac olmalidir. Format: Ad;Plaka;Kategori;Gunluk;Aylik;Yakit;Vites;Yolcu;Durum
+                            Her satir bir arac olmalidir. Format: Ad;Plaka;Kategori;Gunluk;Aylik;Yakit;Vites;Yolcu;Durum;KM;Muayene;Sigorta;Kasko
                         </p>
                     </div>
                     <Button type="button" onClick={handleBulkCreate} disabled={bulkSaving}>
@@ -849,7 +855,7 @@ export const FleetManagement = () => {
                     value={bulkInput}
                     onChange={(event) => setBulkInput(event.target.value)}
                     className="min-h-[150px] font-mono text-xs"
-                    placeholder={`Fiat Egea;34ABC001;Ekonomik;1750;38500;Dizel;Manuel;5;active\nRenault Clio;34ABC002;Ekonomik;1650;36500;Benzin;Otomatik;5;active`}
+                    placeholder={`Fiat Egea;34ABC001;Ekonomik;1750;38500;Dizel;Manuel;5;active;0;2026-12-31;2026-12-31;2026-12-31\nRenault Clio;34ABC002;Ekonomik;1650;36500;Benzin;Otomatik;5;active;0;2026-12-31;2026-12-31;2026-12-31`}
                 />
             </div>
 
@@ -993,17 +999,16 @@ export const FleetManagement = () => {
                 </Table>
             </div>
 
-            {/* Edit/Add Dialog */}
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogContent className="w-[calc(100vw-1rem)] max-w-[960px] h-[92vh] overflow-hidden p-0">
-                    <DialogHeader className="border-b px-4 py-3 sm:px-5 sm:py-4">
+                <DialogContent className="w-[calc(100vw-1rem)] max-w-[960px] h-[90vh] flex flex-col p-0">
+                    <DialogHeader className="border-b px-4 py-3 sm:px-5 sm:py-4 flex-shrink-0">
                         <DialogTitle>{editingVehicle ? "Araci Duzenle" : "Yeni Arac Ekle"}</DialogTitle>
                         <DialogDescription>
                             Tablet ve mobil kullanim icin buyuk alanli, kolay giris formu.
                         </DialogDescription>
                     </DialogHeader>
-                    <form onSubmit={handleSave} className="flex h-full flex-col">
-                        <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 space-y-5">
+                    <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0">
+                        <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 space-y-5 pb-20">
                             <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-4">
                                 <div>
                                     <h4 className="text-sm font-semibold text-slate-800">Temel Bilgiler</h4>
@@ -1310,7 +1315,7 @@ export const FleetManagement = () => {
                             </section>
                         </div>
 
-                        <DialogFooter className="border-t bg-white px-4 py-3 sm:px-5 sm:py-4 sm:justify-end">
+                        <DialogFooter className="border-t bg-white px-4 py-3 sm:px-5 sm:py-4 sm:justify-end flex-shrink-0">
                             <Button type="button" className="w-full sm:w-auto" variant="outline" onClick={() => setDialogOpen(false)}>Iptal</Button>
                             <Button type="submit" className="w-full sm:w-auto">Kaydet</Button>
                         </DialogFooter>

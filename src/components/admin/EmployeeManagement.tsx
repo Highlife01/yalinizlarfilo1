@@ -70,6 +70,7 @@ export const EmployeeManagement = () => {
 
   useEffect(() => {
     void fetchEmployees();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const sortedEmployees = useMemo(() => {

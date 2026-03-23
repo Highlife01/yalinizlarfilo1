@@ -32,7 +32,7 @@ export default defineConfig(() => ({
         background_color: "#ffffff",
         display: "standalone",
         display_override: ["window-controls-overlay", "standalone", "minimal-ui"],
-        orientation: "portrait-primary",
+        orientation: "any",
         start_url: "/",
         icons: [
           {
@@ -81,7 +81,7 @@ export default defineConfig(() => ({
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB (Three.js bundle)
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2}"],
         globIgnores: [
           "**/assets/*.png",       // car images — loaded on demand via runtime cache
@@ -94,7 +94,7 @@ export default defineConfig(() => ({
             options: {
               cacheName: "local-images-cache",
               expiration: {
-                maxEntries: 30,
+                maxEntries: 50,
                 maxAgeSeconds: 60 * 60 * 24 * 90,
               },
             },
@@ -119,7 +119,7 @@ export default defineConfig(() => ({
             options: {
               cacheName: "firebase-storage-cache",
               expiration: {
-                maxEntries: 50,
+                maxEntries: 100,
                 maxAgeSeconds: 60 * 60 * 24 * 30,
               },
             },
@@ -155,8 +155,7 @@ export default defineConfig(() => ({
           "charts-vendor": ["recharts"],
           "maps-vendor": ["react-leaflet", "leaflet"],
           "xlsx-vendor": ["xlsx"],
-          "date-vendor": ["date-fns"],
-          "pdf-vendor": ["jspdf", "html2canvas"],
+          "pdf-vendor": ["jspdf", "jspdf-autotable"],
         },
       },
     },

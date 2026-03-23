@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/integrations/firebase/client";
-import { CalendarDays, Car, Download, DollarSign, TrendingDown, TrendingUp, Wrench, Wallet } from "lucide-react";
+import { CalendarDays, Car, Download, DollarSign, TrendingDown, TrendingUp, Wrench, Wallet, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,8 +20,7 @@ type Vehicle = {
     name: string;
     plate: string;
     status?: "active" | "maintenance" | "rented" | "inactive";
-    monthly_fixed_cost?: number;
-    cost_per_rental?: number;
+    purchase_price: number;
 };
 
 type Booking = {
@@ -63,19 +62,29 @@ type MaintenanceRecord = {
     status?: string;
 };
 
+type VehicleCostRecord = {
+    id: string;
+    vehicleId?: string;
+    vehiclePlate?: string;
+    category?: string;
+    amount: number;
+    date?: string;
+};
+
 type ProfitRow = {
     vehicleId: string;
     vehicleName: string;
     plate: string;
+    purchasePrice: number;
     bookingCount: number;
     rentedDays: number;
     revenue: number;
-    fixedCost: number;
-    variableCost: number;
+    operatingCost: number;
     maintenanceCost: number;
     netProfit: number;
     margin: number;
     utilization: number;
+    roi: number;
 };
 
 const REVENUE_BOOKING_STATUSES = new Set<NonNullable<Booking["status"]>>(["active", "completed"]);
@@ -86,16 +95,6 @@ const toInputDate = (date: Date) => {
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
-};
-
-const parseAmount = (value: number | string | undefined): number => {
-    if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-    if (typeof value !== "string") return 0;
-    const trimmed = value.trim();
-    if (!trimmed) return 0;
-    const normalized = trimmed.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : 0;
 };
 
 const parseDate = (value?: string): Date | null => {
@@ -131,9 +130,10 @@ const formatMoney = (value: number) =>
 export const Reports = () => {
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [bookings, setBookings] = useState<Booking[]>([]);
-    const [incomes, setIncomes] = useState<IncomeRecord[]>([]);
+    const [_incomes, setIncomes] = useState<IncomeRecord[]>([]);
     const [payments, setPayments] = useState<PaymentRecord[]>([]);
     const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>([]);
+    const [vehicleCosts, setVehicleCosts] = useState<VehicleCostRecord[]>([]);
     const [loading, setLoading] = useState(true);
 
     const today = useMemo(() => new Date(), []);
@@ -145,20 +145,20 @@ export const Reports = () => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [vehiclesSnap, bookingsSnap, incomesSnap, maintenanceSnap, paymentsSnap] = await Promise.all([
+                const [vehiclesSnap, bookingsSnap, incomesSnap, maintenanceSnap, paymentsSnap, costsSnap] = await Promise.all([
                     getDocs(collection(db, "vehicles")),
                     getDocs(collection(db, "bookings")),
                     getDocs(collection(db, "income_records")),
                     getDocs(collection(db, "maintenance")),
                     getDocs(collection(db, "payments")),
+                    getDocs(collection(db, "vehicle_costs")),
                 ]);
 
                 setVehicles(vehiclesSnap.docs.map((d) => {
                     const data = d.data();
                     return {
                         id: d.id, name: String(data.name || "Araç"), plate: String(data.plate || "-"),
-                        status: data.status, monthly_fixed_cost: Number(data.monthly_fixed_cost || 0),
-                        cost_per_rental: Number(data.cost_per_rental || 0),
+                        status: data.status, purchase_price: Number(data.purchase_price || 0),
                     };
                 }));
 
@@ -198,6 +198,18 @@ export const Reports = () => {
                         date: String(data.date || ""),
                     };
                 }));
+
+                setVehicleCosts(costsSnap.docs.map((d) => {
+                    const data = d.data();
+                    return {
+                        id: d.id,
+                        vehicleId: String(data.vehicleId || ""),
+                        vehiclePlate: String(data.vehiclePlate || ""),
+                        category: String(data.category || ""),
+                        amount: Number(data.amount || 0),
+                        date: String(data.date || ""),
+                    };
+                }));
             } catch (error) {
                 console.error("Reports fetch error:", error);
             } finally {
@@ -213,7 +225,6 @@ export const Reports = () => {
         const rangeEnd = new Date(rangeEndRaw.getFullYear(), rangeEndRaw.getMonth(), rangeEndRaw.getDate(), 23, 59, 59, 999);
         const normalizedRangeStart = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate(), 0, 0, 0, 0);
         const periodDays = Math.max(1, Math.floor((rangeEnd.getTime() - normalizedRangeStart.getTime()) / DAY_MS) + 1);
-        const periodMonths = periodDays / 30;
 
         const relevantBookings = bookings.filter((b) => {
             if (!b.status || !REVENUE_BOOKING_STATUSES.has(b.status)) return false;
@@ -221,11 +232,6 @@ export const Reports = () => {
             const e = parseDate(b.endDate || b.startDate);
             if (!s || !e) return false;
             return overlapDays(s, e, normalizedRangeStart, rangeEnd) > 0;
-        });
-
-        const relevantIncomes = incomes.filter((i) => {
-            const d = parseDate(i.createdAt) || parseDate(i.approvedAt) || parseDate(i.operationDate);
-            return d ? d >= normalizedRangeStart && d <= rangeEnd : false;
         });
 
         const relevantPayments = payments.filter((p) => {
@@ -238,16 +244,16 @@ export const Reports = () => {
             return d ? d >= normalizedRangeStart && d <= rangeEnd : false;
         });
 
+        const relevantCosts = vehicleCosts.filter((c) => {
+            const d = parseDate(c.date);
+            return d ? d >= normalizedRangeStart && d <= rangeEnd : false;
+        });
+
         const rows: ProfitRow[] = vehicles.map((vehicle) => {
             const vehicleBookings = relevantBookings.filter((b) =>
                 (b.vehicleId && b.vehicleId === vehicle.id) ||
                 (b.vehiclePlate && b.vehiclePlate === vehicle.plate) ||
                 (b.vehicleName && b.vehicleName === vehicle.name)
-            );
-
-            const vehicleIncomes = relevantIncomes.filter((i) =>
-                (i.vehicleId && i.vehicleId === vehicle.id) ||
-                (i.vehiclePlate && i.vehiclePlate === vehicle.plate)
             );
 
             const vehiclePayments = relevantPayments.filter((p) =>
@@ -259,12 +265,15 @@ export const Reports = () => {
                 (m.vehiclePlate && m.vehiclePlate === vehicle.plate)
             );
 
+            const vehicleCostRecords = relevantCosts.filter((c) =>
+                (c.vehicleId && c.vehicleId === vehicle.id) ||
+                (c.vehiclePlate && c.vehiclePlate === vehicle.plate)
+            );
+
             const bookingCount = vehicleBookings.length;
-            // Use actual payments (tahsilat) for revenue; fall back to income_records if no payments exist
-            const paymentRevenue = vehiclePayments.reduce((sum, p) => sum + p.amount, 0);
-            const incomeRevenue = vehicleIncomes.reduce((sum, i) => sum + parseAmount(i.amount), 0);
-            const revenue = relevantPayments.length > 0 ? paymentRevenue : incomeRevenue;
+            const revenue = vehiclePayments.reduce((sum, p) => sum + p.amount, 0);
             const maintenanceCost = vehicleMaintenance.reduce((sum, m) => sum + m.cost, 0);
+            const operatingCost = vehicleCostRecords.reduce((sum, c) => sum + c.amount, 0);
 
             const rentedDays = vehicleBookings.reduce((sum, b) => {
                 const s = parseDate(b.startDate);
@@ -273,36 +282,38 @@ export const Reports = () => {
                 return sum + overlapDays(s, e, normalizedRangeStart, rangeEnd);
             }, 0);
 
-            const fixedCost = Number(vehicle.monthly_fixed_cost || 0) * periodMonths;
-            const variableCost = Number(vehicle.cost_per_rental || 0) * bookingCount;
-            const totalCost = fixedCost + variableCost + maintenanceCost;
+            const totalCost = operatingCost + maintenanceCost;
             const netProfit = revenue - totalCost;
             const margin = revenue > 0 ? (netProfit / revenue) * 100 : 0;
             const utilization = Math.min(100, (rentedDays / periodDays) * 100);
+            const totalInvested = vehicle.purchase_price + totalCost;
+            const roi = totalInvested > 0 ? (netProfit / totalInvested) * 100 : 0;
 
             return {
                 vehicleId: vehicle.id, vehicleName: vehicle.name, plate: vehicle.plate,
-                bookingCount, rentedDays, revenue, fixedCost, variableCost, maintenanceCost,
-                netProfit, margin, utilization,
+                purchasePrice: vehicle.purchase_price, bookingCount, rentedDays, revenue,
+                operatingCost, maintenanceCost, netProfit, margin, utilization, roi,
             };
         });
 
         rows.sort((a, b) => b.netProfit - a.netProfit);
 
+        const totalPurchasePrice = rows.reduce((s, r) => s + r.purchasePrice, 0);
         const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
-        const totalFixedCost = rows.reduce((s, r) => s + r.fixedCost, 0);
-        const totalVariableCost = rows.reduce((s, r) => s + r.variableCost, 0);
+        const totalOperatingCost = rows.reduce((s, r) => s + r.operatingCost, 0);
         const totalMaintenanceCost = rows.reduce((s, r) => s + r.maintenanceCost, 0);
         const totalNetProfit = rows.reduce((s, r) => s + r.netProfit, 0);
         const profitableCount = rows.filter((r) => r.netProfit > 0).length;
         const lossCount = rows.filter((r) => r.netProfit < 0).length;
         const avgMargin = totalRevenue > 0 ? (totalNetProfit / totalRevenue) * 100 : 0;
+        const totalInvested = totalPurchasePrice + totalOperatingCost + totalMaintenanceCost;
+        const fleetROI = totalInvested > 0 ? (totalNetProfit / totalInvested) * 100 : 0;
 
         return {
-            rows, periodDays, totalRevenue, totalFixedCost, totalVariableCost,
-            totalMaintenanceCost, totalNetProfit, profitableCount, lossCount, avgMargin,
+            rows, periodDays, totalPurchasePrice, totalRevenue, totalOperatingCost,
+            totalMaintenanceCost, totalNetProfit, profitableCount, lossCount, avgMargin, fleetROI,
         };
-    }, [bookings, incomes, payments, maintenanceRecords, vehicles, startDate, endDate, firstDayOfMonth, today]);
+    }, [bookings, payments, maintenanceRecords, vehicleCosts, vehicles, startDate, endDate, firstDayOfMonth, today]);
 
     return (
         <div className="space-y-6">
@@ -310,7 +321,7 @@ export const Reports = () => {
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight text-slate-900">Araç Karlılık Raporu</h2>
                     <p className="text-slate-500">
-                        Gelir − (sabit gider + değişken gider + bakım masrafı) = net kâr
+                        Gelir − (araç masrafları + bakım masrafı) = net kâr • Gerçek verilerle hesaplanır
                     </p>
                 </div>
                 <Button variant="outline" disabled>
@@ -341,7 +352,18 @@ export const Reports = () => {
             </Card>
 
             {/* ÖZET KARTLAR */}
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium">Filo Alış Değeri</CardTitle>
+                        <ShoppingCart className="w-4 h-4 text-slate-400" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-xl font-bold">{formatMoney(profitability.totalPurchasePrice)}</div>
+                        <p className="text-xs text-slate-500">{vehicles.length} araç toplam</p>
+                    </CardContent>
+                </Card>
+
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle className="text-sm font-medium">Tahsil Edilen Gelir</CardTitle>
@@ -355,23 +377,12 @@ export const Reports = () => {
 
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">Sabit Gider</CardTitle>
+                        <CardTitle className="text-sm font-medium">Araç Masrafları</CardTitle>
                         <TrendingDown className="w-4 h-4 text-slate-400" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-xl font-bold">{formatMoney(profitability.totalFixedCost)}</div>
-                        <p className="text-xs text-slate-500">Aylık giderlerin döneme dağılımı</p>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">Değişken Gider</CardTitle>
-                        <TrendingDown className="w-4 h-4 text-slate-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-xl font-bold">{formatMoney(profitability.totalVariableCost)}</div>
-                        <p className="text-xs text-slate-500">Kiralama başına giderler</p>
+                        <div className="text-xl font-bold text-red-600">{formatMoney(profitability.totalOperatingCost)}</div>
+                        <p className="text-xs text-slate-500">Araç carisi kayıtları</p>
                     </CardContent>
                 </Card>
 
@@ -382,7 +393,7 @@ export const Reports = () => {
                     </CardHeader>
                     <CardContent>
                         <div className="text-xl font-bold text-amber-700">{formatMoney(profitability.totalMaintenanceCost)}</div>
-                        <p className="text-xs text-slate-500">Servis, sigorta, onarım</p>
+                        <p className="text-xs text-slate-500">Servis, onarım</p>
                     </CardContent>
                 </Card>
 
@@ -396,6 +407,19 @@ export const Reports = () => {
                             {formatMoney(profitability.totalNetProfit)}
                         </div>
                         <p className="text-xs text-slate-500">Marj: %{profitability.avgMargin.toFixed(1)}</p>
+                    </CardContent>
+                </Card>
+
+                <Card className={profitability.fleetROI >= 0 ? "border-blue-200" : "border-red-200"}>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium">Filo ROI</CardTitle>
+                        <Wallet className="w-4 h-4 text-blue-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className={`text-xl font-bold ${profitability.fleetROI >= 0 ? "text-blue-600" : "text-red-600"}`}>
+                            %{profitability.fleetROI.toFixed(1)}
+                        </div>
+                        <p className="text-xs text-slate-500">Yatırım getirisi</p>
                     </CardContent>
                 </Card>
 
@@ -418,7 +442,7 @@ export const Reports = () => {
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2"><Wallet className="w-5 h-5" /> Araç Bazlı Karlılık</CardTitle>
                     <CardDescription>
-                        Net Kâr = Gelir − Sabit Gider − Değişken Gider − Bakım Masrafı
+                        Net Kâr = Gelir − (Araç Masrafları + Bakım) • ROI = Kâr / (Alış + Masraflar) • Gerçek veriler
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -430,14 +454,13 @@ export const Reports = () => {
                                 <TableHeader>
                                     <TableRow className="bg-slate-50">
                                         <TableHead className="font-semibold">Araç</TableHead>
-                                        <TableHead className="text-right font-semibold">Kiralama</TableHead>
-                                        <TableHead className="text-right font-semibold">Gün</TableHead>
+                                        <TableHead className="text-right font-semibold">Alış Fiyatı</TableHead>
                                         <TableHead className="text-right font-semibold">Gelir</TableHead>
-                                        <TableHead className="text-right font-semibold">Sabit G.</TableHead>
-                                        <TableHead className="text-right font-semibold">Değişken G.</TableHead>
+                                        <TableHead className="text-right font-semibold">Masraflar</TableHead>
                                         <TableHead className="text-right font-semibold">Bakım</TableHead>
                                         <TableHead className="text-right font-semibold">Net Kâr</TableHead>
                                         <TableHead className="text-right font-semibold">Marj</TableHead>
+                                        <TableHead className="text-right font-semibold">ROI</TableHead>
                                         <TableHead className="text-right font-semibold">Kullanım</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -448,11 +471,11 @@ export const Reports = () => {
                                                 <div className="font-medium text-sm">{row.vehicleName}</div>
                                                 <div className="text-xs text-slate-500 font-mono">{row.plate}</div>
                                             </TableCell>
-                                            <TableCell className="text-right">{row.bookingCount}</TableCell>
-                                            <TableCell className="text-right">{row.rentedDays}</TableCell>
+                                            <TableCell className="text-right text-sm">
+                                                {row.purchasePrice > 0 ? formatMoney(row.purchasePrice) : <span className="text-slate-300">—</span>}
+                                            </TableCell>
                                             <TableCell className="text-right text-emerald-700 font-medium">{formatMoney(row.revenue)}</TableCell>
-                                            <TableCell className="text-right text-sm">{formatMoney(row.fixedCost)}</TableCell>
-                                            <TableCell className="text-right text-sm">{formatMoney(row.variableCost)}</TableCell>
+                                            <TableCell className="text-right text-sm text-red-600">{formatMoney(row.operatingCost)}</TableCell>
                                             <TableCell className="text-right text-sm">
                                                 {row.maintenanceCost > 0 ? (
                                                     <span className="text-amber-700">{formatMoney(row.maintenanceCost)}</span>
@@ -469,6 +492,11 @@ export const Reports = () => {
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-right">
+                                                <Badge variant="outline" className={row.roi >= 10 ? "text-blue-700 border-blue-200" : row.roi >= 0 ? "text-amber-700 border-amber-200" : "text-red-700 border-red-200"}>
+                                                    %{row.roi.toFixed(1)}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-right">
                                                 <div className="flex items-center justify-end gap-1.5">
                                                     <div className="w-12 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                                                         <div className={`h-full rounded-full ${row.utilization >= 70 ? "bg-emerald-500" : row.utilization >= 40 ? "bg-amber-500" : "bg-red-400"}`} style={{ width: `${row.utilization}%` }} />
@@ -480,7 +508,7 @@ export const Reports = () => {
                                     ))}
                                     {profitability.rows.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={10} className="text-center py-10 text-slate-500">Araç bulunamadı.</TableCell>
+                                            <TableCell colSpan={9} className="text-center py-10 text-slate-500">Araç bulunamadı.</TableCell>
                                         </TableRow>
                                     )}
                                 </TableBody>

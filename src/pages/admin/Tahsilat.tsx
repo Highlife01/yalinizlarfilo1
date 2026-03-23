@@ -4,10 +4,11 @@ import {
     collection,
     getDocs,
     addDoc,
-    deleteDoc,
     doc,
     query,
     orderBy,
+    where,
+    writeBatch,
 } from "firebase/firestore";
 import {
     ref,
@@ -254,7 +255,7 @@ export const Tahsilat = () => {
                 setUploading(false);
             }
 
-            await addDoc(collection(db, "payments"), {
+            const paymentDoc = await addDoc(collection(db, "payments"), {
                 vehiclePlate: form.vehiclePlate.trim().toUpperCase(),
                 customerName: form.customerName.trim(),
                 amount: form.amount,
@@ -264,6 +265,31 @@ export const Tahsilat = () => {
                 ...(dekontUrl ? { dekontUrl } : {}),
                 createdAt: new Date().toISOString(),
             });
+
+            // Cari hesaba alacak kaydı oluştur
+            try {
+                const custQ = query(collection(db, "customers"), where("name", "==", form.customerName.trim()));
+                const custSnap = await getDocs(custQ);
+                const matchedCustomer = custSnap.docs[0];
+                if (matchedCustomer) {
+                    await addDoc(collection(db, "customer_debts"), {
+                        customerId: matchedCustomer.id,
+                        customerName: form.customerName.trim(),
+                        type: "alacak",
+                        category: form.paymentMethod === "nakit" ? "nakit" : form.paymentMethod === "havale" ? "havale" : form.paymentMethod === "kredi_karti" ? "kredi_karti" : "diger",
+                        amount: form.amount,
+                        description: `Tahsilat - ${form.vehiclePlate.trim().toUpperCase()}${form.description.trim() ? " - " + form.description.trim() : ""}`,
+                        date: form.date,
+                        vehiclePlate: form.vehiclePlate.trim().toUpperCase(),
+                        status: "completed",
+                        source: "tahsilat",
+                        paymentId: paymentDoc.id,
+                        createdAt: new Date().toISOString(),
+                    });
+                }
+            } catch (syncErr) {
+                console.error("Cari sync error (non-blocking):", syncErr);
+            }
 
             toast({ title: "Kaydedildi", description: `${formatMoney(form.amount)} tahsilat kaydı oluşturuldu.` });
             setAddOpen(false);
@@ -298,9 +324,19 @@ export const Tahsilat = () => {
     const handleDelete = async (id: string) => {
         setDeletingId(id);
         try {
-            await deleteDoc(doc(db, "payments", id));
+            const batch = writeBatch(db);
+            batch.delete(doc(db, "payments", id));
+
+            // Bağlı cari hesap alacak kaydını da sil
+            try {
+                const linkedQ = query(collection(db, "customer_debts"), where("paymentId", "==", id));
+                const linkedSnap = await getDocs(linkedQ);
+                linkedSnap.forEach((d) => batch.delete(d.ref));
+            } catch { /* silent */ }
+
+            await batch.commit();
             setPayments((prev) => prev.filter((p) => p.id !== id));
-            toast({ title: "Silindi", description: "Tahsilat kaydı silindi." });
+            toast({ title: "Silindi", description: "Tahsilat ve bağlı cari kayıtları silindi." });
         } catch (error) {
             console.error("Delete payment error:", error);
             toast({ title: "Hata", description: "Silinemedi.", variant: "destructive" });
