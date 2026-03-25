@@ -1,0 +1,1777 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "HGS Sorgulama API Dokümantasyonu",
+    "version": "1.0.0",
+    "description": "HGS Sorgulama API'si, HGS ihlallerini programatik olarak sorgulamanıza, otomatik sorgulamalar planlamanıza ve webhook bildirimleri almanıza olanak tanır. API, kredi tabanlı bir faturalama sistemiyle çalışır.\n\nKullanımı basittir. Geçerli bir API Anahtarı ve hesabınızda kredi ile dakikalar içinde başlayabilirsiniz.\n\n1. Sadece plaka numarasıyla bir araç [kaydedin](#tag/araçlar/post/vehicles)\n2. İhlalleri [sorgulayın](#tag/sorgular/post/vehicles/{vehicle}/query)\n3. Sorgu sonuçları için webhook bildirimleri [alın](#tag/webhook-yapılandırması)\n\nİşleri daha da kolaylaştırmak için otomatik sorgulamaları bile [zamanlayabilirsiniz](#tag/sorgular/put/vehicles/{vehicle}/schedule)!\n\n## Kimlik Doğrulama\n\nKimlik doğrulama API anahtarları kullanılarak gerçekleştirilir. Kimlik doğrulamak için, `Bearer {token}` formatında API anahtarınızla `Authorization` başlığı gönderin. Bir API anahtarınız yoksa, [bir tane oluşturabilirsiniz](https://panel.hgsborcsorgulama.com/api-tokens).\n\nBir API anahtarı olmadan istek yaptığınızda, API `401 (Unauthorized)` durum koduyla yanıt verecektir.\n\n## Dil Desteği\n\nAPI, `Accept-Language` HTTP başlığı aracılığıyla uluslararasılaştırmayı (i18n) destekler. Tüm kullanıcıya yönelik metinler ve hata mesajları tercih ettiğiniz dilde döndürülebilir.\n\nAPI isteklerinize tercih ettiğiniz dil koduyla birlikte `Accept-Language` başlığını ekleyin:\n\n```\nAccept-Language: en\n```\n\n**Desteklenen Diller:**\n\n- `tr` - Türkçe - Varsayılan\n- `en` - İngilizce\n\n## Hız Sınırlama\n\nAPI, adil kullanım ve sistem kararlılığını sağlamak için hız sınırlaması uygular. Tüm API uç noktaları aynı hız sınırını paylaşır:\n\n> [!note]\n> Dakikada **600** istek\n\nHız sınırlaması, IP adresine göre değil, hesap başına uygulanır. Her istek hız sınırı kotanızdan bir birim tüketir ve bu 60 saniyelik kayan bir pencerede sıfırlanır.\n\nTüm API yanıtları standart hız sınırı başlıklarını içerir:\n\n| Başlık                | Açıklama                                                                                |\n|-----------------------|-----------------------------------------------------------------------------------------|\n| X-RateLimit-Limit     | Dakikada izin verilen maksimum istek sayısı                                             |\n| X-RateLimit-Remaining | Mevcut zaman penceresinde kalan istek sayısı                                            |\n| Retry-After           | Başka bir istek yapmadan önce beklenecek saniye (yalnızca limit aşıldığında dahil edilir) |\n\nHız sınırını aştığınızda, API `429 (Too Many Requests)` durum kodu döndürür. İstekleri ne zaman sürdürebileceğinizi belirlemek için `Retry-After` başlığını kontrol edin.\n\n> [!note]\n> Tüm API uç noktaları, `X-Credits-Remaining` yanıt başlığında otomatik olarak kredi bakiyesini içerir. Bu başlık, hesap bakiyenizi izlemek ve ne zaman ek kredi satın almanız gerektiğini belirlemek için kullanışlıdır. Bu, devam eden sorgular hesaba katıldıktan sonra hesap bakiyenizde kalan kredi sayısıdır. Bu değer, toplam kredi bakiyenizden aktif sorgusu olan araç sayısının çıkarılmasıyla hesaplanır."
+  },
+  "servers": [
+    {
+      "url": "https://api.hgsborcsorgulama.com/v1"
+    }
+  ],
+  "security": [
+    {
+      "API Anahtarı": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Araçlar",
+      "description": "Hesabınızdaki araçları yönetin. HGS ihlallerini takip etmek için araç ekleyin, mevcut durumlarını sorgulayın ve artık ihtiyaç duyulmadığında araçları kaldırın."
+    },
+    {
+      "name": "Sorgular",
+      "description": "Araç ihlallerini sorgulayın ve mevcut durum hakkında ayrıntılı bilgi alın. Düzenli aralıklarla araçları otomatik olarak sorgulamak için zamanlanan sorgular da yapılandırabilirsiniz."
+    },
+    {
+      "name": "Kullanıcı",
+      "description": "Kimliği doğrulanmış kullanıcı bilgilerini ve hesap detaylarını almak için uç noktalar."
+    },
+    {
+      "name": "Webhook Yapılandırması",
+      "description": "Gerçek zamanlı olay bildirimleri almak için webhook ayarlarınızı yönetin. Webhook URL'nizi yapılandırın, bağlantıyı test edin ve teslimat geçmişini görüntüleyin.\n\n## Webhook'lar Nasıl Çalışır\n\nYapılandırıldıktan sonra, olaylar gerçekleştiğinde API otomatik olarak webhook URL'nize `POST` istekleri gönderecektir. Her istek, doğrulama için kimlik doğrulama başlıkları içerir.\n\n**Örnek yük:**\n```json\n{\n  \"id\": \"01k98rwkjakr909y54s3mxz5ft\",\n  \"type\": \"credits.low_balance\",\n  \"data\": {\n    \"credit_balance\": 500\n  }\n}\n```\n\n## İmza Doğrulama\n\nWebhook isteklerinin özgünlüğünü doğrulamak için, istek yükünü ve webhook gizli anahtarınızı kullanarak bir HMAC imzası oluşturun, ardından bunu `Webhook-Signature` başlığıyla karşılaştırın.\n\n### PHP\n\n```php\n$sharedSecretKey = \"my-secure-webhook-secret-123\"; // Gerçek gizli anahtarınızla değiştirin\n$payload = file_get_contents(\"php://input\");\n\n$signature = hash_hmac(\"sha256\", $payload, $sharedSecretKey);\n\nif (hash_equals($signature, $_SERVER[\"HTTP_WEBHOOK_SIGNATURE\"])) {\n    // Webhook özgün\n}\n```\n\n### Node.js\n```javascript\nconst crypto = require(\"crypto\");\n\nconst sharedSecretKey = \"my-secure-webhook-secret-123\"; // Webhook gizli anahtarınız\nconst payload = JSON.stringify(req.body);\n\nconst hash = crypto\n  .createHmac(\"sha256\", sharedSecretKey)\n  .update(payload)\n  .digest(\"hex\");\n\nif (hash === req.headers[\"webhook-signature\"]) {\n    // Webhook özgün\n}\n```\n\n> [!tip]\n> Webhook'unuzu yapılandırdıktan sonra, alacağınız tüm olayları ve bunların yük yapılarını görmek için aşağıdaki [Webhooks](#webhook/undefined) bölümüne bakın."
+    }
+  ],
+  "paths": {
+    "/me": {
+      "get": {
+        "tags": [
+          "Kullanıcı"
+        ],
+        "summary": "Kimliği Doğrulanmış Kullanıcıyı Al",
+        "description": "Kredi bakiyesi dahil olmak üzere kimliği doğrulanmış kullanıcı profil bilgilerini döndürür. Bu uç nokta, kimlik doğrulamayı doğrulamak ve mevcut kredileri kontrol etmek için kullanışlıdır.",
+        "operationId": "user.me",
+        "responses": {
+          "200": {
+            "description": "Başarılı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "Kullanıcı için benzersiz tanımlayıcı",
+                          "example": "01k92898bygkrgz8f822g262b2"
+                        },
+                        "name": {
+                          "type": "string",
+                          "description": "Kullanıcı adı",
+                          "example": "Acme Kiralama Şirketi"
+                        },
+                        "email": {
+                          "type": "string",
+                          "description": "Kullanıcı e-posta adresi",
+                          "example": "iletisim@acme.com"
+                        },
+                        "credit_balance": {
+                          "type": "integer",
+                          "description": "Mevcut hesap bakiyesi",
+                          "example": 5000
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "Kullanıcı hesabının oluşturulduğu zaman"
+                        },
+                        "updated_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "Kullanıcı hesabının son değiştirildiği zaman"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vehicles": {
+      "get": {
+        "tags": [
+          "Araçlar"
+        ],
+        "summary": "Araçları Listele",
+        "description": "Hesabınızla ilişkili tüm araçların listesini alın.",
+        "operationId": "vehicles.index",
+        "responses": {
+          "200": {
+            "description": "Başarılı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Vehicle"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Araçlar"
+        ],
+        "summary": "Araç Ekle",
+        "description": "İhlal takibi için hesabınıza bir araç ekleyin. Hem Türk hem de Türk olmayan plaka numaralarını destekler.\n\n> [!tip]\n> Bu endpoint idempotent'tir - aynı plaka numarasıyla birden çok kez çağrılması güvenlidir ve mevcut aracı döndürür, yinelenen kayıt oluşturmaz veya hata vermez.",
+        "operationId": "vehicles.store",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "plate_number"
+                ],
+                "properties": {
+                  "plate_number": {
+                    "type": "string",
+                    "description": "Araç plaka numarası. Türk formatı veya genel alfanümerik (3-20 karakter) olmalıdır. Türk olmayan plaka numaraları için, isteği göndermeden önce tüm alfanümerik olmayan karakterleri (örn. boşluklar, tireler vb.) kaldırın.",
+                    "example": "34ABC123",
+                    "examples": {
+                      "turkish_format": {
+                        "summary": "Türk plaka formatı",
+                        "value": "34ABC123"
+                      },
+                      "generic_format": {
+                        "summary": "Genel alfanümerik format",
+                        "value": "AB123CD"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Başarılı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Vehicle"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Doğrulama Hatası",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": [
+                              "required",
+                              "format"
+                            ]
+                          },
+                          "field": {
+                            "type": "string",
+                            "enum": [
+                              "plate_number"
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "examples": {
+                  "gerekli_alan_eksik": {
+                    "summary": "Gerekli alan eksik",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "required",
+                          "field": "plate_number",
+                          "message": "Plaka numarası alanı gereklidir."
+                        }
+                      ]
+                    }
+                  },
+                  "geçersiz_plaka_formatı": {
+                    "summary": "Geçersiz plaka formatı",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "format",
+                          "field": "plate_number",
+                          "message": "Plaka numarası geçersiz."
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vehicles/{vehicle}": {
+      "get": {
+        "tags": [
+          "Araçlar"
+        ],
+        "summary": "Araç Detaylarını Al",
+        "description": "Tüm ihlaller, zamanlanan sorgu yapılandırması ve mevcut ihlal tutarları dahil olmak üzere belirli bir araç hakkında detaylı bilgi alın.",
+        "operationId": "vehicles.show",
+        "parameters": [
+          {
+            "name": "vehicle",
+            "in": "path",
+            "required": true,
+            "description": "Araç ID'si",
+            "schema": {
+              "type": "string",
+              "example": "01k92basrvsn25gws3b6hdwfe4"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Başarılı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/VehicleWithDetails"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Araçlar"
+        ],
+        "summary": "Aracı Kaldır",
+        "description": "Hesabınızdan bir aracı kaldırın. Bu, aracı ve ilişkili tüm ihlal verilerini kalıcı olarak silecektir.",
+        "operationId": "vehicles.destroy",
+        "parameters": [
+          {
+            "name": "vehicle",
+            "in": "path",
+            "required": true,
+            "description": "Araç ID'si",
+            "schema": {
+              "type": "string",
+              "example": "01k92basrvsn25gws3b6hdwfe4"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Başarılı"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/vehicles/{vehicle}/query": {
+      "post": {
+        "tags": [
+          "Sorgular"
+        ],
+        "summary": "İhlalleri Sorgula",
+        "description": "Belirli bir araç için ihlal sorgulaması tetikleyin. Bu işlem asenkrondur ve sorgu başarılı olursa hesap bakiyenizden bir kredi tüketir. Genellikle 30-60 saniye içinde tamamlanır ve sonuçlar [webhook bildirimi](#tag/webhook-yapılandırması/put/webhook) (yapılandırılmışsa) veya [araç detaylarını](#tag/araçlar/get/vehicles/{vehicle}) alarak kullanılabilir olacaktır.",
+        "operationId": "vehicles.query",
+        "parameters": [
+          {
+            "name": "vehicle",
+            "in": "path",
+            "required": true,
+            "description": "Araç ID'si",
+            "schema": {
+              "type": "string",
+              "example": "01k92basrvsn25gws3b6hdwfe4"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Başarılı"
+          },
+          "402": {
+            "description": "ödeme gerekli",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Lütfen hesabınıza sorgu kredisi ekleyin"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/vehicles/{vehicle}/schedule": {
+      "get": {
+        "tags": [
+          "Sorgular"
+        ],
+        "summary": "Zamanlamayı Al",
+        "description": "Bir araç için mevcut zamanlanan sorgu yapılandırmasını alın.",
+        "operationId": "schedule.show",
+        "parameters": [
+          {
+            "name": "vehicle",
+            "in": "path",
+            "required": true,
+            "description": "Araç ID'si",
+            "schema": {
+              "type": "string",
+              "example": "01k92basrvsn25gws3b6hdwfe4"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Başarılı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ScheduledQuery"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bulunamadı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Bu araç için zamanlama bulunamadı"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Sorgular"
+        ],
+        "summary": "Zamanlama Yapılandır",
+        "description": "Standart cron ifadesi formatını kullanarak bir araç için otomatik sorgulamalar yapılandırın. Zamanlama UTC saat diliminde çalışır. Her zamanlanan sorgu başarıyla yürütüldüğünde bir kredi tüketir.",
+        "operationId": "schedule.store",
+        "parameters": [
+          {
+            "name": "vehicle",
+            "in": "path",
+            "required": true,
+            "description": "Araç ID'si",
+            "schema": {
+              "type": "string",
+              "example": "01k92basrvsn25gws3b6hdwfe4"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "enabled",
+                  "expression"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "description": "Zamanlamanın aktif olup olmadığı",
+                    "example": true
+                  },
+                  "expression": {
+                    "type": "string",
+                    "description": "Standart cron ifadesi (@daily gibi özel ifadeler desteklenmez)",
+                    "example": "0 0 * * *"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Başarılı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ScheduledQuery"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "description": "Doğrulama Hatası",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": [
+                              "required",
+                              "boolean",
+                              "format"
+                            ]
+                          },
+                          "field": {
+                            "type": "string",
+                            "enum": [
+                              "enabled",
+                              "expression"
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "examples": {
+                  "enabled_alanı_eksik": {
+                    "summary": "enabled alanı eksik",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "required",
+                          "field": "enabled",
+                          "message": "enabled alanı gereklidir."
+                        }
+                      ]
+                    }
+                  },
+                  "expression_alanı_eksik": {
+                    "summary": "expression alanı eksik",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "required",
+                          "field": "expression",
+                          "message": "expression alanı gereklidir."
+                        }
+                      ]
+                    }
+                  },
+                  "geçersiz_boolean_değeri": {
+                    "summary": "Geçersiz boolean değeri",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "boolean",
+                          "field": "enabled",
+                          "message": "enabled alanı true veya false olmalıdır."
+                        }
+                      ]
+                    }
+                  },
+                  "geçersiz_cron_ifadesi": {
+                    "summary": "Geçersiz cron ifadesi",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "format",
+                          "field": "expression",
+                          "message": "expression geçerli bir cron ifadesi olmalıdır."
+                        }
+                      ]
+                    }
+                  },
+                  "özel_ifade_desteklenmiyor": {
+                    "summary": "Özel ifade desteklenmiyor",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "format",
+                          "field": "expression",
+                          "message": "Lütfen özel ifadeler yerine standart cron formatı kullanın."
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Sorgular"
+        ],
+        "summary": "Zamanlamayı Sil",
+        "description": "Bir araçtan zamanlanan sorgu yapılandırmasını kaldırın. Araç artık otomatik olarak sorgulanmayacaktır.\n\n> [!tip]\n> Bu endpoint idempotent'tir - birden çok kez çağrılması güvenlidir ve hata döndürür.",
+        "operationId": "schedule.destroy",
+        "parameters": [
+          {
+            "name": "vehicle",
+            "in": "path",
+            "required": true,
+            "description": "Araç ID'si",
+            "schema": {
+              "type": "string",
+              "example": "01k92basrvsn25gws3b6hdwfe4"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Başarılı"
+          }
+        }
+      }
+    },
+    "/webhook": {
+      "get": {
+        "tags": [
+          "Webhook Yapılandırması"
+        ],
+        "summary": "Yapılandırmayı Al",
+        "description": "Mevcut webhook URL'nizi ve gizli anahtarınızı alın. Gizli anahtar, HMAC imzası oluşturarak webhook özgünlüğünü doğrulamak için kullanılır.",
+        "operationId": "webhook.show",
+        "responses": {
+          "200": {
+            "description": "Başarılı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "example": "https://example.com/webhook"
+                        },
+                        "secret": {
+                          "type": "string",
+                          "example": "your-webhook-secret-key"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bulunamadı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Webhook yapılandırılmamış"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Webhook Yapılandırması"
+        ],
+        "summary": "Webhook Yapılandır",
+        "description": "Webhook URL'nizi ve gizli anahtarınızı ayarlayın veya güncelleyin. Gizli anahtar sağlanmazsa: ilk yapılandırmada yeni bir tane oluşturulur veya güncellemelerde mevcut gizli anahtarınız korunur. URL genel erişime açık olmalı ve 2xx durum kodu döndürmelidir.",
+        "operationId": "webhook.store",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Webhook POST isteklerini alacak HTTPS URL'si",
+                    "example": "https://example.com/webhook"
+                  },
+                  "secret": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 255,
+                    "description": "İmza doğrulaması için isteğe bağlı gizli anahtar (min 16 karakter). Sağlanmazsa ilk yapılandırmada otomatik oluşturulur. Güncellemelerde sağlanmazsa mevcut gizli anahtar korunur.",
+                    "example": "my-secure-webhook-secret-123"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Başarılı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "format": "uri",
+                          "example": "https://example.com/webhook"
+                        },
+                        "secret": {
+                          "type": "string",
+                          "example": "my-secure-webhook-secret-123"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Doğrulama Hatası",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": [
+                              "required",
+                              "url",
+                              "active_url",
+                              "min",
+                              "max"
+                            ]
+                          },
+                          "field": {
+                            "type": "string",
+                            "enum": [
+                              "url",
+                              "secret"
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "examples": {
+                  "u_r_l_alanı_eksik": {
+                    "summary": "URL alanı eksik",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "required",
+                          "field": "url",
+                          "message": "url alanı gereklidir."
+                        }
+                      ]
+                    }
+                  },
+                  "geçersiz_u_r_l_formatı": {
+                    "summary": "Geçersiz URL formatı",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "url",
+                          "field": "url",
+                          "message": "url alanı geçerli bir URL olmalıdır."
+                        }
+                      ]
+                    }
+                  },
+                  "ulaşılamayan_u_r_l": {
+                    "summary": "Ulaşılamayan URL",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "active_url",
+                          "field": "url",
+                          "message": "url alanı geçerli, ulaşılabilir bir URL olmalıdır."
+                        }
+                      ]
+                    }
+                  },
+                  "gizli_anahtarçok_kısa": {
+                    "summary": "Gizli anahtar çok kısa",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "min",
+                          "field": "secret",
+                          "message": "secret alanı en az 16 karakter olmalıdır."
+                        }
+                      ]
+                    }
+                  },
+                  "gizli_anahtarçok_uzun": {
+                    "summary": "Gizli anahtar çok uzun",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "max",
+                          "field": "secret",
+                          "message": "secret alanı 255 karakterden fazla olmamalıdır."
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Webhook Yapılandırması"
+        ],
+        "summary": "Yapılandırmayı Sil",
+        "description": "Webhook URL'sini ve gizli anahtarı hesabınızdan kaldırın. Artık olaylar için webhook bildirimleri almayacaksınız.",
+        "operationId": "webhook.destroy",
+        "responses": {
+          "204": {
+            "description": "Başarılı"
+          }
+        }
+      }
+    },
+    "/webhook/test": {
+      "post": {
+        "tags": [
+          "Webhook Yapılandırması"
+        ],
+        "summary": "Webhook'u Test Et",
+        "description": "Doğru çalıştığını doğrulamak için yapılandırılmış URL'nize bir test webhook'u gönderin. Gerçekçi örnek verilerle herhangi bir mevcut olay türünü test edebilirsiniz. Ayrıntılı yük yapıları için aşağıdaki Webhooks bölümüne bakın.",
+        "operationId": "webhook.test",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "description": "Test edilecek webhook olay türü",
+                    "enum": [
+                      "credits.insufficient_balance",
+                      "credits.low_balance",
+                      "query.completed"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Başarılı"
+          },
+          "400": {
+            "description": "Hatalı İstek",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Webhook yapılandırılmamış"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Doğrulama Hatası",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": [
+                              "required",
+                              "in"
+                            ]
+                          },
+                          "field": {
+                            "type": "string",
+                            "enum": [
+                              "type"
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "examples": {
+                  "type_alanı_eksik": {
+                    "summary": "type alanı eksik",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "required",
+                          "field": "type",
+                          "message": "type alanı gereklidir."
+                        }
+                      ]
+                    }
+                  },
+                  "geçersiz_olay_türü": {
+                    "summary": "Geçersiz olay türü",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "in",
+                          "field": "type",
+                          "message": "Seçilen tür geçersiz."
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webhook/deliveries": {
+      "get": {
+        "tags": [
+          "Webhook Yapılandırması"
+        ],
+        "summary": "Webhook Teslimatlarını Listele",
+        "description": "Durum, istek yükü ve yanıt dahil olmak üzere webhook teslimat denemelerinin sayfalanmış listesini alın. Webhook sorunlarını ayıklamak için kullanışlıdır.",
+        "operationId": "webhook.deliveries",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Teslimat durumuna göre filtrele",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failed"
+              ],
+              "example": "success"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "description": "Sayfa başına öğe (1-100, varsayılan 15)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 15,
+              "example": 25
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Başarılı",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WebhookDelivery"
+                      }
+                    },
+                    "links": {
+                      "type": "object",
+                      "description": "Sayfalar arasında gezinmek için sayfalama linkleri",
+                      "properties": {
+                        "first": {
+                          "type": "string",
+                          "format": "uri",
+                          "nullable": true,
+                          "description": "İlk sayfanın URL'si",
+                          "example": "https://api.hgsborcsorgulama.com/api/v1/webhook/deliveries?page=1"
+                        },
+                        "last": {
+                          "type": "string",
+                          "format": "uri",
+                          "nullable": true,
+                          "description": "Son sayfanın URL'si",
+                          "example": "https://api.hgsborcsorgulama.com/api/v1/webhook/deliveries?page=5"
+                        },
+                        "prev": {
+                          "type": "string",
+                          "format": "uri",
+                          "nullable": true,
+                          "description": "Önceki sayfanın URL'si",
+                          "example": null
+                        },
+                        "next": {
+                          "type": "string",
+                          "format": "uri",
+                          "nullable": true,
+                          "description": "Sonraki sayfanın URL'si",
+                          "example": "https://api.hgsborcsorgulama.com/api/v1/webhook/deliveries?page=2"
+                        }
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Sayfalama meta verileri",
+                      "properties": {
+                        "current_page": {
+                          "type": "integer",
+                          "description": "Mevcut sayfa numarası",
+                          "example": 1
+                        },
+                        "current_page_url": {
+                          "type": "string",
+                          "format": "uri",
+                          "description": "Mevcut sayfanın URL'si",
+                          "example": "https://api.hgsborcsorgulama.com/api/v1/webhook/deliveries?page=1"
+                        },
+                        "from": {
+                          "type": "integer",
+                          "nullable": true,
+                          "description": "Mevcut sayfadaki ilk öğenin dizini",
+                          "example": 1
+                        },
+                        "path": {
+                          "type": "string",
+                          "format": "uri",
+                          "description": "Sorgu parametreleri olmadan temel URL yolu",
+                          "example": "https://api.hgsborcsorgulama.com/api/v1/webhook/deliveries"
+                        },
+                        "per_page": {
+                          "type": "integer",
+                          "description": "Sayfa başına görüntülenen öğe sayısı",
+                          "example": 15
+                        },
+                        "to": {
+                          "type": "integer",
+                          "nullable": true,
+                          "description": "Mevcut sayfadaki son öğenin dizini",
+                          "example": 15
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Doğrulama Hatası",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": [
+                              "in",
+                              "integer",
+                              "min",
+                              "max"
+                            ]
+                          },
+                          "field": {
+                            "type": "string",
+                            "enum": [
+                              "status",
+                              "per_page"
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "examples": {
+                  "geçersiz_durum_değeri": {
+                    "summary": "Geçersiz durum değeri",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "in",
+                          "field": "status",
+                          "message": "Seçilen durum geçersiz."
+                        }
+                      ]
+                    }
+                  },
+                  "geçersiz_per_page_türü": {
+                    "summary": "Geçersiz per_page türü",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "integer",
+                          "field": "per_page",
+                          "message": "per page alanı bir tamsayı olmalıdır."
+                        }
+                      ]
+                    }
+                  },
+                  "per_page_minimumun_altında": {
+                    "summary": "per_page minimumun altında",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "min",
+                          "field": "per_page",
+                          "message": "per page alanı en az 1 olmalıdır."
+                        }
+                      ]
+                    }
+                  },
+                  "per_page_maksimumunüzerinde": {
+                    "summary": "per_page maksimumun üzerinde",
+                    "value": {
+                      "errors": [
+                        {
+                          "code": "max",
+                          "field": "per_page",
+                          "message": "per page alanı 100'den büyük olmamalıdır."
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {
+    "credits-insufficient_balance": {
+      "post": {
+        "summary": "Yetersiz Kredi",
+        "description": "Hesabınızda yetersiz kredi olduğu için bir sorgu yürütülemediğinde gönderilir. Araç sorgularına devam etmek için hesabınıza kredi ekleyin.",
+        "operationId": "webhook.credits.insufficient_balance.receive",
+        "parameters": [
+          {
+            "name": "Content-Type",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "application/json"
+              ]
+            }
+          },
+          {
+            "name": "Webhook-Delivery-Id",
+            "in": "header",
+            "required": true,
+            "description": "Bu belirli webhook teslimat denemesi için benzersiz tanımlayıcı.",
+            "schema": {
+              "type": "string",
+              "example": "01k8y6e6qzdx9fqdges9wwn5rj"
+            }
+          },
+          {
+            "name": "Webhook-Signature",
+            "in": "header",
+            "required": true,
+            "description": "Webhook gizli anahtarınız kullanılarak oluşturulan istek yükünün HMAC-SHA256 imzası. Webhook isteğinin özgünlüğünü doğrulamak için bunu kullanın. İmza doğrulama örnekleri için [Webhook Yapılandırması](#tag/webhook-yapılandırması) bölümüne bakın.",
+            "schema": {
+              "type": "string",
+              "example": "9dd1af45965a89d664137bab91f4b0eb6f69e259a0a9fc671e1bef9e5f68872d"
+            }
+          },
+          {
+            "name": "User-Agent",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "HGS-Borc-Sorgulama-Hook"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Olay için benzersiz tanımlayıcı",
+                    "example": "01k98rwkjakr909y54s3mxz5ft"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "credits.insufficient_balance"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Webhook başarıyla alındı. Herhangi bir 2xx durum kodu başarılı kabul edilir."
+          }
+        }
+      }
+    },
+    "credits-low_balance": {
+      "post": {
+        "summary": "Düşük Bakiye Uyarısı",
+        "description": "Kredi bakiyeniz yapılandırılan eşiğin altına düştüğünde gönderilir. Bu, krediniz bitmeden önce hesabınıza kredi eklemeniz için size zaman verir.",
+        "operationId": "webhook.credits.low_balance.receive",
+        "parameters": [
+          {
+            "name": "Content-Type",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "application/json"
+              ]
+            }
+          },
+          {
+            "name": "Webhook-Delivery-Id",
+            "in": "header",
+            "required": true,
+            "description": "Bu belirli webhook teslimat denemesi için benzersiz tanımlayıcı.",
+            "schema": {
+              "type": "string",
+              "example": "01k8y6e6qzdx9fqdges9wwn5rj"
+            }
+          },
+          {
+            "name": "Webhook-Signature",
+            "in": "header",
+            "required": true,
+            "description": "Webhook gizli anahtarınız kullanılarak oluşturulan istek yükünün HMAC-SHA256 imzası. Webhook isteğinin özgünlüğünü doğrulamak için bunu kullanın. İmza doğrulama örnekleri için [Webhook Yapılandırması](#tag/webhook-yapılandırması) bölümüne bakın.",
+            "schema": {
+              "type": "string",
+              "example": "9dd1af45965a89d664137bab91f4b0eb6f69e259a0a9fc671e1bef9e5f68872d"
+            }
+          },
+          {
+            "name": "User-Agent",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "HGS-Borc-Sorgulama-Hook"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Olay için benzersiz tanımlayıcı",
+                    "example": "01k98rwkjakr909y54s3mxz5ft"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "credits.low_balance"
+                    ]
+                  },
+                  "data": {
+                    "type": "object",
+                    "required": [
+                      "credit_balance"
+                    ],
+                    "properties": {
+                      "credit_balance": {
+                        "type": "integer",
+                        "description": "Kalan sorgu kredisi sayısı",
+                        "example": 500
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Webhook başarıyla alındı. Herhangi bir 2xx durum kodu başarılı kabul edilir."
+          }
+        }
+      }
+    },
+    "query-completed": {
+      "post": {
+        "summary": "Sorgu Tamamlandı",
+        "description": "Bir araç sorgusu işlemeyi tamamladığında gönderilir. Yük, araç detaylarını ve ortaya çıkan, kaybolan veya devam eden ihlalleri gösteren kategorize edilmiş ihlalleri içerir.",
+        "operationId": "webhook.query.completed.receive",
+        "parameters": [
+          {
+            "name": "Content-Type",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "application/json"
+              ]
+            }
+          },
+          {
+            "name": "Webhook-Delivery-Id",
+            "in": "header",
+            "required": true,
+            "description": "Bu belirli webhook teslimat denemesi için benzersiz tanımlayıcı.",
+            "schema": {
+              "type": "string",
+              "example": "01k8y6e6qzdx9fqdges9wwn5rj"
+            }
+          },
+          {
+            "name": "Webhook-Signature",
+            "in": "header",
+            "required": true,
+            "description": "Webhook gizli anahtarınız kullanılarak oluşturulan istek yükünün HMAC-SHA256 imzası. Webhook isteğinin özgünlüğünü doğrulamak için bunu kullanın. İmza doğrulama örnekleri için [Webhook Yapılandırması](#tag/webhook-yapılandırması) bölümüne bakın.",
+            "schema": {
+              "type": "string",
+              "example": "9dd1af45965a89d664137bab91f4b0eb6f69e259a0a9fc671e1bef9e5f68872d"
+            }
+          },
+          {
+            "name": "User-Agent",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "HGS-Borc-Sorgulama-Hook"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Olay için benzersiz tanımlayıcı",
+                    "example": "01k98rwkjakr909y54s3mxz5ft"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "query.completed"
+                    ]
+                  },
+                  "data": {
+                    "type": "object",
+                    "required": [
+                      "vehicle",
+                      "violations"
+                    ],
+                    "properties": {
+                      "vehicle": {
+                        "$ref": "#/components/schemas/Vehicle"
+                      },
+                      "violations": {
+                        "type": "object",
+                        "description": "Durum değişikliklerine göre gruplandırılmış ihlaller",
+                        "properties": {
+                          "appeared": {
+                            "type": "array",
+                            "description": "Bu sorguda ortaya çıkan ihlaller",
+                            "items": {
+                              "$ref": "#/components/schemas/Violation"
+                            }
+                          },
+                          "disappeared": {
+                            "type": "array",
+                            "description": "Kaybolan ihlaller (ödenen veya çözülen)",
+                            "items": {
+                              "$ref": "#/components/schemas/Violation"
+                            }
+                          },
+                          "persistent": {
+                            "type": "array",
+                            "description": "Önceden var olan ve hala var olan ihlaller",
+                            "items": {
+                              "$ref": "#/components/schemas/Violation"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Webhook başarıyla alındı. Herhangi bir 2xx durum kodu başarılı kabul edilir."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "API Anahtarı": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "API anahtarınızı kullan"
+      }
+    },
+    "responses": {
+      "NotFound": {
+        "description": "Bulunamadı",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "string",
+                  "example": "Bulunamadı."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Vehicle": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Araç için benzersiz tanımlayıcı",
+            "example": "01k92basrvsn25gws3b6hdwfe4"
+          },
+          "plate_number": {
+            "type": "string",
+            "description": "Plaka numarası",
+            "example": "34ABC123",
+            "examples": {
+              "turkish_format": {
+                "summary": "Türk plaka formatı",
+                "value": "34ABC123"
+              },
+              "generic_format": {
+                "summary": "Genel alfanümerik format",
+                "value": "AB123CD"
+              }
+            }
+          },
+          "formatted_plate_number": {
+            "type": "string",
+            "description": "Karakter grupları arasında boşluklarla biçimlendirilmiş plaka numarası",
+            "example": "34 ABC 123",
+            "examples": {
+              "turkish_format": {
+                "summary": "Türk plaka formatı",
+                "value": "34 ABC 123"
+              },
+              "generic_format": {
+                "summary": "Genel alfanümerik format",
+                "value": "AB 123 CD"
+              }
+            }
+          },
+          "total_due_amount": {
+            "type": "number",
+            "format": "float",
+            "description": "İhlaller için toplam ödenmemiş tutar",
+            "example": 150.5
+          },
+          "query_in_progress": {
+            "type": "boolean",
+            "description": "Bu araç için şu anda devam eden bir sorgu olup olmadığını gösterir",
+            "example": false
+          },
+          "last_queried_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Bu araç için son ihlal sorgusunun zaman damgası"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Aracın oluşturulduğu zaman damgası"
+          }
+        }
+      },
+      "VehicleWithDetails": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Vehicle"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "scheduled_query": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ScheduledQuery"
+                  },
+                  {
+                    "nullable": true
+                  }
+                ]
+              },
+              "violations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Violation"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ScheduledQuery": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Zamanlanan sorgunun aktif mi yoksa duraklatılmış mı olduğu",
+            "example": true
+          },
+          "expression": {
+            "type": "string",
+            "description": "Sorgu zamanlamasını tanımlayan standart cron ifadesi (UTC saat diliminde çalışır)",
+            "example": "0 0 * * *"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Zamanlamanın ilk oluşturulduğu zaman"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Zamanlamanın son değiştirildiği zaman"
+          }
+        }
+      },
+      "Violation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "İhlal kaydı için benzersiz tanımlayıcı",
+            "example": "01k92basrvsn25gws3b6hdwfe5"
+          },
+          "reference_id": {
+            "type": "string",
+            "description": "Geçiş operatörünün sisteminden gelen harici referans kimliği",
+            "example": "0010990121232025080209066666"
+          },
+          "toll_operator": {
+            "type": "string",
+            "description": "İhlali veren geçiş operatörünün adı",
+            "example": "KARAYOLLARI GENEL MÜDÜRLÜĞÜ"
+          },
+          "exit_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Aracın geçiş çıkış noktasından geçtiği zaman damgası"
+          },
+          "entry_station": {
+            "type": "string",
+            "nullable": true,
+            "description": "Geçiş giriş istasyonunun adı (varsa)",
+            "example": null
+          },
+          "exit_station": {
+            "type": "string",
+            "description": "Geçiş çıkış istasyonunun adı",
+            "example": "15 TEMMUZ KUZEY KÖPRÜSÜ"
+          },
+          "vehicle_class": {
+            "type": "integer",
+            "description": "Geçiş ücreti fiyatlandırması için araç sınıflandırma kategorisi.\n\n| Sınıf | Açıklama                                                                          |\n|-------|-----------------------------------------------------------------------------------|\n| 0     | Eksik veya tanımlanmamış                                                          |\n| 1     | Aks mesafesi 3.20m'den küçük olan iki akslı araçlar                               |\n| 2     | Aks mesafesi 3.20m'den büyük olan her türlü 2 akslı araç                          |\n| 3     | Her türlü 3 akslı araç                                                            |\n| 4     | Her türlü 4 ve 5 akslı araç                                                       |\n| 5     | 6 ve üzeri akslı araçlar                                                          |\n| 6     | Motosiklet                                                                        |",
+            "example": 1
+          },
+          "penalty_cutoff_date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Ek cezalar uygulanmadan önce ödeme yapılacak son tarih",
+            "example": "2026-04-08T00:00:00.000000Z"
+          },
+          "fee": {
+            "type": "number",
+            "format": "float",
+            "description": "Temel geçiş ücreti tutarı",
+            "example": 25
+          },
+          "total_due_amount": {
+            "type": "number",
+            "format": "float",
+            "description": "Cezalar dahil toplam borç tutarı",
+            "example": 25
+          }
+        }
+      },
+      "WebhookDelivery": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Webhook teslimat denemesi için benzersiz tanımlayıcı",
+            "example": "01k92basrvsn25gws3b6hdwfe6"
+          },
+          "event_id": {
+            "type": "string",
+            "description": "Bu webhook'u tetikleyen olayın kimliği. Başarısız teslimatları yeniden denemek için idempotency anahtarı olarak kullanılabilir.",
+            "example": "01k92bm0ega2sqf4xdvybq7xj0"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failed"
+            ],
+            "description": "Teslimat durumu",
+            "example": "success"
+          },
+          "request": {
+            "type": "object",
+            "description": "Webhook uç noktanıza gönderilen HTTP istek yükü",
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Webhook uç noktası URL'si",
+                "example": "https://webhook.site/b997c0a6-687f-4bed-9999-16a5dbe4953c"
+              },
+              "headers": {
+                "type": "object",
+                "description": "`Webhook-Delivery-Id`, `Webhook-Signature` ve `User-Agent` dahil istek başlıkları",
+                "example": {
+                  "Webhook-Delivery-Id": "01k8y6e6qzdx9fqdges9wwn5rj",
+                  "Webhook-Signature": "90a6ec866591ee8c6c07652a372d99ddeecaecabc3b0244168bbb03afe2720df",
+                  "User-Agent": "HGS-Borc-Sorgulama-Hook"
+                }
+              },
+              "payload": {
+                "type": "object",
+                "description": "Webhook'a gönderilen olay verileri",
+                "example": {
+                  "id": "01k98r9n6vf0wtfbgmjmt9s4ve",
+                  "type": "credits.low_balance",
+                  "data": {
+                    "credit_balance": 500
+                  }
+                }
+              }
+            }
+          },
+          "response": {
+            "type": "object",
+            "description": "Webhook uç noktanızdan alınan HTTP yanıtı",
+            "properties": {
+              "status": {
+                "type": "integer",
+                "description": "HTTP yanıt durum kodu",
+                "example": 202
+              },
+              "headers": {
+                "type": "object",
+                "description": "Yanıt başlıkları",
+                "example": {
+                  "server": "nginx",
+                  "transfer-encoding": "chunked",
+                  "cache-control": "no-cache, private",
+                  "date": "Fri, 31 Oct 2025 22:33:02 GMT"
+                }
+              },
+              "body": {
+                "type": "string",
+                "description": "Yanıt gövdesi metni",
+                "example": ""
+              }
+            }
+          },
+          "delivered_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Webhook'un başarıyla teslim edildiği zaman damgası"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Teslimat denemesinin oluşturulduğu zaman"
+          }
+        }
+      }
+    }
+  }
+}

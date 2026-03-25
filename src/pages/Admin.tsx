@@ -23,6 +23,7 @@ const Invoices = lazy(() => import("@/pages/admin/Invoices").then(m => ({ defaul
 const ContractBuilder = lazy(() => import("@/pages/admin/ContractBuilder").then(m => ({ default: m.ContractBuilder })));
 const VehicleCosts = lazy(() => import("@/pages/admin/VehicleCosts").then(m => ({ default: m.VehicleCosts })));
 const Tahsilat = lazy(() => import("@/pages/admin/Tahsilat").then(m => ({ default: m.Tahsilat })));
+const HgsSorgulama = lazy(() => import("@/pages/admin/HgsSorgulama").then(m => ({ default: m.HgsSorgulama })));
 
 const AdminSpinner = () => (
   <div className="flex items-center justify-center py-20">
@@ -130,6 +131,7 @@ export default function Admin() {
             path="tahsilat"
             element={userRole === "admin" ? <Tahsilat /> : <Navigate to="/admin/operations" replace />}
           />
+          <Route path="hgs" element={<HgsSorgulama />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>
         </Suspense>

@@ -14,7 +14,8 @@ import {
     BarChart3,
     FileText,
     Wallet,
-    Banknote
+    Banknote,
+    Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,6 +46,7 @@ export const AdminLayout = ({ children, handleSignOut, userRole }: AdminLayoutPr
         { icon: FileText, label: "Faturalar", path: "/admin/invoices" },
         { icon: Wallet, label: "Araç Carisi", path: "/admin/vehicle-costs" },
         { icon: Banknote, label: "Tahsilat", path: "/admin/tahsilat" },
+        { icon: Zap, label: "HGS Sorgulama", path: "/admin/hgs" },
         { icon: BarChart3, label: "Raporlar", path: "/admin/reports" },
         { icon: Users, label: "Müşteriler", path: "/admin/customers" },
         { icon: Settings, label: "Ayarlar", path: "/admin/settings" },

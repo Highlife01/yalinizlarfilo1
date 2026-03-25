@@ -1,98 +1,82 @@
-# Welcome to your Lovable project
+# 🚗 Yalınızlar Filo Yönetimi - Ana Dokümantasyon Merkezi
 
-## Project info
+Bütün proje notları, güncellemeler, kullanım rehberleri ve gelecek planları bu dosyada (README.md) birleştirilmiştir.
 
-**URL**: https://lovable.dev/projects/9ed11de6-c89c-4adb-9fea-934f07076781
+---
 
-## How can I edit this code?
+## 📌 GELECEK GELİŞTİRMELER VE YAPILACAKLAR (ROADMAP)
 
-There are several ways of editing your application.
+### 1. Kod Mimarisi ve Performans (Teknik Borçların Ödenmesi)
+*   **Devasa Dosyaların Bölünmesi:** `RentalOperations.tsx` (108 KB) ve `FleetManagement.tsx` (70 KB) çok büyümüş durumda. Operasyon sayfasındaki adımlar (Müşteri Seçimi, Hasar Formu, İmza, Araç Çekimi vb.) ayrı ayrı bileşenlere bölünecek (örn: `StepCustomer.tsx`, `StepSignature.tsx`).
+*   **Merkezi State Yönetimi:** Operasyon sürecinde form geçişleri çok fazla `useState` ile yönetiliyor. `Zustand` gibi hafif bir state kütüphanesine geçilecek.
+*   **React Query / Caching:** Araç ve müşteri listeleri veritabanından sıfırdan çekilmek yerine önbellek (cache) ile yüklenecek, zayıf internette tepki süresi artırılacak.
 
-**Use Lovable**
+### 2. Kullanıcı Deneyimi ve Operasyon Hızlandırma (UX)
+*   **Çevrimdışı Taslaklar (Offline Drafts):** İnternet kopmalarına karşı form verileri (bodrum/otopark çekimi gibi durumlar için) `localStorage` ile anlık yedeklenecek.
+*   **Uyarıcı Soft Validation:** Boş bırakılan zorunlu olmayan alanlar, işlem kaydedilirken sarı renkle işaretlenerek "Daha Sonra Tamamla" uyarısı çıkartacak.
+*   **Takvim & Çakışma Yönetimi:** `RentalOperations` anında aracın yaklaşan bakım ve rezervasyon takvimleri pop-up olarak çıkacak.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/9ed11de6-c89c-4adb-9fea-934f07076781) and start prompting.
+### 3. Yapay Zeka ve Otomasyon
+*   **Akıllı Hasar Analizi:** Araç alınırken çekilen fotoğraf ile önceki teslim resimleri AI (Google Vision vb.) tarafından taranıp çizik uyarısı yapacak.
+*   **HGS / OGS Ceza Takip Modülü:** Kiralanan tarihlerdeki geçiş ve cezalar, sistem iade alındığında otomatik "Tahsilat" fişi olarak önerilecek.
+*   **Etkileşimli WhatsApp İletişimi:** İmzalanan sözleşmeler PDF dosyasından ziyade, interaktif bir bulut linki olarak müşteriye WhatsApp üzerinden fırlatılacak.
 
-Changes made via Lovable will be committed automatically to this repo.
+---
 
-**Use your preferred IDE**
+## 🚀 SİSTEM DURUMU VE GEÇMİŞ GÜNCELLEMELER (CHANGELOG)
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Versiyon: 2.0.0 → 2.5.0 (Ocak 2026 Geliştirmeleri)
+- **Gelişmiş Dashboard:** Canlı istatistikler, filo kullanım oranı, recent activities, hızlı işlemler.
+- **Export Sistemi:** Excel ve PDF çıktı alma (`xlsx`, `jspdf`).
+- **QR Kod Sistemi:** Araç etiketleri ve tarama (`qrcode.react`).
+- **PWA (Progressive Web App):** Offline destekli mobil uygulama benzeri altyapı, manifest.json.
+- **Firebase CLI:** Gelişmiş Storage/Firestore güvenlik kuralları (`firestore.rules`), Composite indexler.
+- **Bildirim Sistemi:** Bakım, kiralama bitişi vb. konularında web bildirimleri.
+- **Yeni Sayfalar:** `VehicleDetail.tsx`, `DamageReports.tsx`, `Reports.tsx`.
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+---
 
-Follow these steps:
+## 📖 ARAÇ FİLOSU - HIZLI BAŞLANGIÇ REHBERİ
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+**Admin panelinde araç filosu boş görünüyorsa**, bu Firebase'de henüz veri olmamasından kaynaklanır.
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+**Yöntem 1 (Önerilen) - Örnek Yükleme:**
+1. "Araç Filosu" bölümüne girin.
+2. "Varsayılanları Yükle" butonuna tıklayıp onaylayın. Örnek araçlar yüklenecektir.
 
-# Step 3: Install the necessary dependencies.
-npm i
+**Yöntem 2 - Manuel Ekleme:**
+1. "+ Yeni Araç Ekle" butonu (veya Operasyon sayfasındaki Yeni Araç ekle) ile manuel olarak plakayla girin.
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+---
 
-**Edit a file directly in GitHub**
+## 🛠 SCRIPTS (YARDIMCI ARAÇLAR) VE YÖNETİCİ ATAMA
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+**Filo Kar/Analytics Raporu:**
+*   `npm run fleet-profit:generate` → `data/filo-kar.xlsx` Excel'ini oluşturur.
+*   Google Sheets tabanındaki scriptleri projede `/scripts` klasöründe JS dökümü olarak bulunur. 
 
-**Use GitHub Codespaces**
+**Admin Yetkisi Verme:**
+`set-admin-users.mjs` scripti ile Firebase üzerinde admin rolü atanır (Firestore Security Rules için gereklidir).
+1. Firebase Konsol'dan Service Account JSON indirin, root'a ekleyin.
+2. Sistemde kullanıcıların standart üyelikleri açık olmalı (Kayıt ol ekranından).
+3. `npm run admin:set` komutu ile listedeki mevcut e-postalara Admin rolü fırlatılır.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+---
 
-## What technologies are used for this project?
+## 📊 RAKİP ANALİZİ VE YEREL (ADANA) STRATEJİSİ (ASYA CAR REFERANS)
 
-This project is built with:
+*   **Lokasyon ve Vurgu**: Çukurova Uluslararası Havalimanı (Mersin/Adana), Adana Havalimanı İç Hatlar.
+*   **Site Mesajları:** "Güvenli Odeme", "Komisyonsuz", "Online Özel Fiyatlar".
+*   **İletişim:** Çağrı merkezi (0322...) ve WhatsApp'ı mutlaka Hero ya da Sticky Header'a koyun.
+*   **Hedef Operasyon:** Farklı lokasyona araç bırakma opsiyonu ve saatlik esnekliği sisteme yedirilmelidir.
 
-- Vite
-- TypeScript
-- React
-- Tailwind CSS
+---
 
-## Geliştirme Notları (Development Log)
+## 💻 TEMEL PROJE (LOVABLE / VITE) BİLGİSİ
 
-### Yapılan Geliştirmeler (Tamamlandı)
-- **E-Fatura Entegrasyon Altyapısı**: Müşteri formuna "Bireysel/Kurumsal" fatura tipi eklendi. Kurumsal müşteriler için Vergi Dairesi, VKN ve Firma Ünvanı alanları eklendi. Kira sözleşmesi hazırlarken KDV oranı ve hariç tutar seçimi eklendi. "Faturalar" arşivi sayfası oluşturuldu.
-- **Kiralama Sözleşmesi PDF Optimizasyonu**: Sözleşmede Türkçe karakter sorunu çözüldü. Sözleşmeye "Trafik Sigortası" ve "Kasko" firması isimleri ile bitiş tarihleri eklendi. Oluşturulan pdf artık hem Firestore'a kaydediliyor hem de indirilebiliyor.
-- **Hasar Raporları Yönetimi**: Hasar raporları arşivine "Sil" butonu eklendi, yönetici kayıtları temizleyebiliyor.
-- **Admin Panel Revizyonu (Refactor)**: Yönetim panelindeki kart tabanlı (Card) tasarımlar, daha derli toplu ve verimli bir tablo (Table) yapısına geçirildi. İlanlar, şirketler, kullanıcılar, mesajlar ve teklifler için listeleme görünümleri modernize edildi.
-- **Web Sitesi Domain Güncellemesi**: Sistem genelindeki domain adresleri ve yapılandırmalar `www.yalinizlarfilo.com.tr` olarak güncellendi.
-- **SEO ve Performans İyileştirmeleri**: Şehir ve ilçe slug'ları (SEO dostu URL'ler) arama motoru uyumluluğu için normalize edildi. Türkçe karakter ve ön ek (örn. "i-") sorunları kalıcı olarak giderildi. Sayfa içi bağlantılar için "smooth scrolling" eklendi.
-- **Tasarım ve Tema Optimizasyonları (Dark Luxury Theme)**: Site genelinde karanlık, premium ve lüks kurumsal otomobil kiralama estetiği sağlandı. Etkileşimli öğeler (hover geçişleri vb.) zenginleştirildi.
-- **Gelişmiş Tarih Seçici (Date Picker)**: Yönetici panelinde blog ve duyuru ekleme formlarına manuel metin girişi yerine interaktif ve Türkçe uyumlu takvim bileşeni entegre edildi.
-- **Yazar ve Sosyal Medya Entegrasyonu**: Blog sistemi yazar profillerine Twitter, Instagram ve LinkedIn bağlantıları eklendi. Yazar seçimi formlarda opsiyonel ("Editör" varsayılanı) hale getirildi.
+*   **Teknolojiler:** Vite, TypeScript, React, Tailwind CSS, Firebase
+*   **Çalıştırma:** `npm i` ardından `npm run dev`
+*   **Domain:** www.yalinizlarfilo.com.tr
+*   **Hosting:** Firebase Hosting (Vercel alternatifi)
 
-### Yapılacaklar Listesi (Gelecek Oturum - Todo)
-1. **SMS Bildirim Sistemi**: Müşteri rezervasyon yaptığında "Rezervasyonunuz alındı" şeklinde otomatik SMS gidecek bir altyapı (Netgsm, İletişim Makinesi vb. bir servis ile) entegre edilecek.
-2. **Araç Bakım Modülü Geliştirmesi**: Araçlar bakıma gönderilirken araç plakasının/bilgisinin "kayıtlı araçlar" veritabanından seçilmesi (dropdown) sağlanacak.
-3. **Süresi Dolan Araç Uyarısı**: Araçların kira, sigorta, kasko veya muayene süresinin dolmasına az kaldığında admin paneline veya e-posta/SMS olarak bilgilendirme geçilecek.
-4. **Yapay Zeka Destekli Hasar Değerlendirme Sistemi (AI Vision)**:
-   - *Görüntü Toplama*: Araç fotoğraflarının sisteme yüklenmesi.
-   - *AI Görüntü Analizi*: MiniMax Agent (veya benzeri computer vision) algoritmalarıyla hasar tespiti (çizik, göçük, parça kırığı vb.).
-   - *Hasar Sınıflandırma*: Hasarların kozmetik, parça değişimi veya ağır yapısal hasar olarak kategorize edilmesi.
-   - *Maliyet Tahmini*: Algoritmalar ile onarım maliyetinin hesaplanarak sigorta şirketlerine ve tamircilere anında sunulması.
-   - *Raporlama*: Doğrudan sigorta poliçesiyle ortaklaşa çalışabilen otomatik pdf ve sigorta raporlaması.
-   - *API Entegrasyonu*: Yönetici panelinden yapay zeka sağlayıcısı (Gemini, MiniMax vb.) API anahtarlarının eklenebileceği ve ayarlardan yönetilebileceği yapılandırma ekranının oluşturulması.
-5. **Rezervasyon Sisteminin Elden Geçirilmesi**: Mevcut rezervasyon akışı daha kullanıcı dostu ve verimli olacak şekilde iyileştirilecek.
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/9ed11de6-c89c-4adb-9fea-934f07076781) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+(Not: Gereksiz markdown dosyaları temizlenmiş olup tüm kritik belge ve yol haritası yalnızca okumakta olduğunuz bu dosya altında toplanmıştır.)

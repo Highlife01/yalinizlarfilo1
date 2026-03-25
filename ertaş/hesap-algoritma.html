@@ -1,0 +1,1350 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Araç Muhasebe Sistemi — Hesap Algoritması</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg: #0a0a0c;
+    --surface: #111116;
+    --surface2: #1a1a22;
+    --border: #2a2a38;
+    --accent: #f0c060;
+    --accent2: #60d0f0;
+    --accent3: #f06080;
+    --green: #60f0a0;
+    --text: #e8e8f0;
+    --muted: #6a6a88;
+    --radius: 8px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Space Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* HEADER */
+  .header {
+    text-align: center;
+    padding: 40px 20px 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 32px;
+  }
+  .header h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+  }
+  .header p {
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 6px;
+  }
+
+  /* NAV TABS */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 12px;
+  }
+  .tab-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    transition: all 0.15s;
+    letter-spacing: 0.5px;
+  }
+  .tab-btn:hover { color: var(--text); border-color: var(--muted); }
+  .tab-btn.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+
+  /* PANELS */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* SECTION */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-title span { color: var(--muted); font-family: 'Space Mono', monospace; font-size: 11px; font-weight: 400; }
+
+  /* GRID */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+  @media (max-width: 900px) { .grid-2,.grid-3,.grid-4 { grid-template-columns: 1fr; } }
+
+  /* FORM ELEMENTS */
+  label {
+    display: block;
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+  }
+  input, select, textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 12px;
+    border-radius: 6px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  input[type=number] { text-align: right; }
+  textarea { resize: vertical; min-height: 60px; }
+
+  /* RESULTS BOX */
+  .result-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-top: 16px;
+  }
+  .result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .result-row:last-child { border-bottom: none; }
+  .result-row .lbl { color: var(--muted); }
+  .result-row .val { font-weight: 700; font-size: 13px; }
+  .pos { color: var(--green); }
+  .neg { color: var(--accent3); }
+  .neu { color: var(--accent2); }
+  .yel { color: var(--accent); }
+
+  /* BIG RESULT */
+  .big-result {
+    background: var(--surface2);
+    border: 2px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-top: 16px;
+    text-align: center;
+  }
+  .big-result .lbl { font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+  .big-result .val { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; margin-top: 4px; }
+
+  /* BUTTON */
+  .btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    padding: 10px 24px;
+    border-radius: var(--radius);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 16px;
+    transition: opacity 0.15s;
+    letter-spacing: 0.5px;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-sm {
+    padding: 6px 14px;
+    font-size: 11px;
+    margin-top: 0;
+  }
+  .btn-danger { background: var(--accent3); }
+  .btn-info { background: var(--accent2); }
+
+  /* TABLE */
+  .tbl-wrap { overflow-x: auto; margin-top: 12px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  th {
+    background: var(--surface2);
+    color: var(--muted);
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 10px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .badge-green { background: rgba(96,240,160,0.15); color: var(--green); }
+  .badge-red { background: rgba(240,96,128,0.15); color: var(--accent3); }
+  .badge-yellow { background: rgba(240,192,96,0.15); color: var(--accent); }
+  .badge-blue { background: rgba(96,208,240,0.15); color: var(--accent2); }
+
+  /* STAT CARDS */
+  .stat-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .stat-card .sc-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+  .stat-card .sc-val { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; margin-top: 4px; }
+  .stat-card .sc-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  /* PROGRESS BAR */
+  .prog-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .prog-fill { height: 100%; border-radius: 2px; transition: width 0.4s; }
+
+  /* TAG */
+  .tag {
+    display: inline-block;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    color: var(--muted);
+    margin: 2px;
+  }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+  .formula-box {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 11px;
+    color: var(--accent2);
+    margin: 8px 0;
+    font-family: 'Space Mono', monospace;
+    line-height: 2;
+  }
+  .formula-box .comment { color: var(--muted); }
+
+  .info-tip {
+    background: rgba(96,208,240,0.08);
+    border: 1px solid rgba(96,208,240,0.2);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-size: 11px;
+    color: var(--accent2);
+    margin: 8px 0;
+  }
+
+  .scrollable { max-height: 400px; overflow-y: auto; }
+
+  .input-group {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+  }
+  .input-group > div { flex: 1; }
+  .input-group .btn { margin-top: 0; white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🚗 ARAÇ MUHASEBE SİSTEMİ</h1>
+  <p>NİSAN 2026 Demo — Alım-Satım · Kiralama · Kasa · Bilanço Algoritmaları</p>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('stok')">📦 STOK / KAR-ZARAR</button>
+  <button class="tab-btn" onclick="switchTab('kira')">🔑 KİRALAMA</button>
+  <button class="tab-btn" onclick="switchTab('alacak')">📋 ALACAK-BORÇ</button>
+  <button class="tab-btn" onclick="switchTab('sirket')">👥 ORTAKLAR</button>
+  <button class="tab-btn" onclick="switchTab('kasa')">💰 KASA</button>
+  <button class="tab-btn" onclick="switchTab('bilanco')">📊 BİLANÇO</button>
+  <button class="tab-btn" onclick="switchTab('formulas')">🔢 ALGORİTMA</button>
+</div>
+
+<!-- ============================================================ -->
+<!-- TAB 1: STOK / KAR-ZARAR -->
+<!-- ============================================================ -->
+<div id="tab-stok" class="panel active">
+
+  <div class="section">
+    <div class="section-title">📦 ARAÇ GİRİŞ HESABI <span>— Toplam Maliyet = Alış + Masraf</span></div>
+    <div class="grid-3">
+      <div>
+        <label>Plaka</label>
+        <input type="text" id="s-plaka" placeholder="34AB1234" oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <div>
+        <label>Marka / Model</label>
+        <input type="text" id="s-model" placeholder="MİTSUBİSHİ OUTLANDER">
+      </div>
+      <div>
+        <label>Yıl</label>
+        <input type="number" id="s-yil" placeholder="2020" min="1990" max="2026">
+      </div>
+    </div>
+    <div class="grid-2" style="margin-top:12px">
+      <div>
+        <label>Alış Fiyatı (₺)</label>
+        <input type="number" id="s-alis" placeholder="0" oninput="calcStok()">
+      </div>
+      <div>
+        <label>Alınan Kişi / Firma</label>
+        <input type="text" id="s-alicidan" placeholder="AUTOLAN / Müzayede">
+      </div>
+    </div>
+
+    <hr>
+    <div class="section-title" style="font-size:12px; margin-bottom:12px;">Masraf Kalemleri</div>
+    <div class="grid-4">
+      <div>
+        <label>Sigorta (₺)</label>
+        <input type="number" id="m-sigorta" value="1500" oninput="calcStok()">
+      </div>
+      <div>
+        <label>Noter (₺)</label>
+        <input type="number" id="m-noter" value="0" oninput="calcStok()">
+      </div>
+      <div>
+        <label>Komisyon (₺)</label>
+        <input type="number" id="m-komisyon" value="0" oninput="calcStok()">
+      </div>
+      <div>
+        <label>Yol Masrafı (₺)</label>
+        <input type="number" id="m-yol" value="0" oninput="calcStok()">
+      </div>
+      <div>
+        <label>Kaporta (₺)</label>
+        <input type="number" id="m-kaporta" value="0" oninput="calcStok()">
+      </div>
+      <div>
+        <label>Göçük (₺)</label>
+        <input type="number" id="m-gocuk" value="0" oninput="calcStok()">
+      </div>
+      <div>
+        <label>Muayene (₺)</label>
+        <input type="number" id="m-muayene" value="0" oninput="calcStok()">
+      </div>
+      <div>
+        <label>Diğer (₺)</label>
+        <input type="number" id="m-diger" value="0" oninput="calcStok()">
+      </div>
+    </div>
+
+    <div class="result-box" id="stok-maliyet-box">
+      <div class="result-row"><span class="lbl">Alış Fiyatı</span><span class="val neu" id="r-alis">₺0</span></div>
+      <div class="result-row"><span class="lbl">Toplam Masraf</span><span class="val yel" id="r-masraf">₺0</span></div>
+      <div class="result-row"><span class="lbl" style="font-weight:700;color:var(--text)">TOPLAM MALİYET</span><span class="val pos" id="r-maliyet" style="font-size:16px">₺0</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">💹 SATIŞ & KAR-ZARAR HESABI</div>
+    <div class="grid-3">
+      <div>
+        <label>Satış Fiyatı (₺)</label>
+        <input type="number" id="s-satis" placeholder="0" oninput="calcStok()">
+      </div>
+      <div>
+        <label>Alıcı</label>
+        <input type="text" id="s-alici" placeholder="Alıcı adı">
+      </div>
+      <div>
+        <label>Satış Tarihi</label>
+        <input type="date" id="s-tarih">
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <label>Ödeme Şekli</label>
+      <input type="text" id="s-odeme" placeholder="1.000.000 İŞ + 280.000 NAKİT + 85.000 VAKIF">
+    </div>
+
+    <div class="big-result" id="kar-box" style="display:none">
+      <div class="lbl" id="kar-lbl">NET KAR</div>
+      <div class="val pos" id="kar-val">₺0</div>
+      <div style="margin-top:8px; font-size:11px; color:var(--muted)" id="kar-detail"></div>
+    </div>
+  </div>
+
+  <!-- Stok Listesi -->
+  <div class="section">
+    <div class="section-title">📋 STOK LİSTESİ <span>— Satılmayan araçlar</span></div>
+    <div class="input-group" style="margin-bottom:12px">
+      <div style="flex:3"><input type="text" id="stok-search" placeholder="Plaka veya marka ara..." oninput="renderStokTable()"></div>
+      <button class="btn btn-sm" onclick="addToStok()">+ STOKA EKLE</button>
+    </div>
+    <div class="tbl-wrap scrollable">
+      <table id="stok-table">
+        <thead><tr>
+          <th>#</th><th>Plaka</th><th>Marka/Model</th><th>Yıl</th>
+          <th>Alış ₺</th><th>Masraf ₺</th><th>Toplam Maliyet ₺</th>
+          <th>Satış ₺</th><th>Kar/Zarar ₺</th><th>Durum</th><th>İşlem</th>
+        </tr></thead>
+        <tbody id="stok-body"></tbody>
+      </table>
+    </div>
+    <div class="result-box" style="margin-top:12px">
+      <div class="result-row"><span class="lbl">Stokta Araç Sayısı</span><span class="val neu" id="stok-count">0</span></div>
+      <div class="result-row"><span class="lbl">Toplam Stok Değeri (Maliyet)</span><span class="val yel" id="stok-total">₺0</span></div>
+      <div class="result-row"><span class="lbl">Satılan Araçlar Toplam Karı</span><span class="val pos" id="stok-kar">₺0</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TAB 2: KİRALAMA -->
+<!-- ============================================================ -->
+<div id="tab-kira" class="panel">
+  <div class="section">
+    <div class="section-title">🔑 KİRALAMA GELİR HESABI <span>— Araç başı aylık gelir</span></div>
+    <div class="grid-3">
+      <div>
+        <label>Araç Plaka</label>
+        <input type="text" id="k-plaka" placeholder="01-BFK-275" oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <div>
+        <label>Marka / Model</label>
+        <input type="text" id="k-model" placeholder="OPEL CORSA">
+      </div>
+      <div>
+        <label>Araç Maliyet (₺)</label>
+        <input type="number" id="k-maliyet" placeholder="1330092" oninput="calcKira()">
+      </div>
+    </div>
+    <div class="grid-4" style="margin-top:12px">
+      <div>
+        <label>Aylık Kira (₺)</label>
+        <input type="number" id="k-kira" placeholder="42000" oninput="calcKira()">
+      </div>
+      <div>
+        <label>Kira Süresi (Ay)</label>
+        <input type="number" id="k-sure" placeholder="6" min="1" oninput="calcKira()">
+      </div>
+      <div>
+        <label>Başlangıç Tarihi</label>
+        <input type="date" id="k-baslangic" oninput="calcKira()">
+      </div>
+      <div>
+        <label>Kiracı</label>
+        <input type="text" id="k-kiraci" placeholder="Hekimbey">
+      </div>
+    </div>
+
+    <hr>
+    <div class="section-title" style="font-size:12px; margin-bottom:12px;">Kira Dönemi Masrafları</div>
+    <div class="grid-4">
+      <div>
+        <label>Sigorta (₺)</label>
+        <input type="number" id="km-sigorta" value="0" oninput="calcKira()">
+      </div>
+      <div>
+        <label>Kasko (₺)</label>
+        <input type="number" id="km-kasko" value="0" oninput="calcKira()">
+      </div>
+      <div>
+        <label>Noter (₺)</label>
+        <input type="number" id="km-noter" value="0" oninput="calcKira()">
+      </div>
+      <div>
+        <label>Takip Cihazı (₺)</label>
+        <input type="number" id="km-takip" value="0" oninput="calcKira()">
+      </div>
+      <div>
+        <label>Kredi Masrafı (₺)</label>
+        <input type="number" id="km-kredi" value="0" oninput="calcKira()">
+      </div>
+      <div>
+        <label>Diğer (₺)</label>
+        <input type="number" id="km-diger" value="0" oninput="calcKira()">
+      </div>
+    </div>
+
+    <div class="result-box">
+      <div class="result-row"><span class="lbl">Toplam Kira Geliri (Brüt)</span><span class="val pos" id="k-toplam-gelir">₺0</span></div>
+      <div class="result-row"><span class="lbl">Toplam Masraf</span><span class="val neg" id="k-toplam-masraf">₺0</span></div>
+      <div class="result-row"><span class="lbl">Net Kira Geliri</span><span class="val pos" id="k-net">₺0</span></div>
+      <div class="result-row"><span class="lbl">Bitiş Tarihi</span><span class="val neu" id="k-bitis">—</span></div>
+      <div class="result-row"><span class="lbl">Araç Maliyeti Üzerinden Yıllık Getiri %</span><span class="val yel" id="k-getiri">—</span></div>
+    </div>
+    <button class="btn" onclick="addKira()">+ KİRALAK ARACA EKLE</button>
+  </div>
+
+  <!-- Kiralık Araç Listesi -->
+  <div class="section">
+    <div class="section-title">🚗 AKTİF KİRALIK ARAÇLAR <span>— NİSAN 2026</span></div>
+    <div class="tbl-wrap scrollable">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Plaka</th><th>Model</th><th>Kiracı</th>
+          <th>Kira/Ay ₺</th><th>Süre</th><th>Başlangıç</th><th>Bitiş</th>
+          <th>Top. Gelir ₺</th><th>Durum</th><th>İşlem</th>
+        </tr></thead>
+        <tbody id="kira-body"></tbody>
+      </table>
+    </div>
+    <div class="result-box" style="margin-top:12px">
+      <div class="result-row"><span class="lbl">Aktif Araç Sayısı</span><span class="val neu" id="kira-count">0</span></div>
+      <div class="result-row"><span class="lbl">Bu Ay Toplam Kira Geliri</span><span class="val pos" id="kira-ay-gelir">₺0</span></div>
+      <div class="result-row"><span class="lbl">Boşta Araç Sayısı</span><span class="val neg" id="kira-bos">0</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TAB 3: ALACAK-BORÇ -->
+<!-- ============================================================ -->
+<div id="tab-alacak" class="panel">
+  <div class="section">
+    <div class="section-title">📋 AÇIK ALACAK KAYDI</div>
+    <div class="grid-3">
+      <div>
+        <label>Borçlu Adı</label>
+        <input type="text" id="a-borçlu" placeholder="Kişi / Firma">
+      </div>
+      <div>
+        <label>Alacak Türü</label>
+        <select id="a-tur">
+          <option value="acik">Açık Alacak</option>
+          <option value="cek">Alınan Çek</option>
+          <option value="senet">Senet</option>
+          <option value="borc">Borç (Giden)</option>
+        </select>
+      </div>
+      <div>
+        <label>Tutar (₺)</label>
+        <input type="number" id="a-tutar" placeholder="0">
+      </div>
+    </div>
+    <div class="grid-3" style="margin-top:12px">
+      <div>
+        <label>Vade Tarihi</label>
+        <input type="date" id="a-vade">
+      </div>
+      <div>
+        <label>Tahsil Edilen (₺)</label>
+        <input type="number" id="a-gelen" placeholder="0" oninput="calcAlacak()">
+      </div>
+      <div>
+        <label>Açıklama</label>
+        <input type="text" id="a-aciklama" placeholder="Araç plaka, işlem detayı...">
+      </div>
+    </div>
+    <div class="result-box">
+      <div class="result-row"><span class="lbl">Alacak</span><span class="val pos" id="a-alacak-r">₺0</span></div>
+      <div class="result-row"><span class="lbl">Tahsil Edilen</span><span class="val neu" id="a-gelen-r">₺0</span></div>
+      <div class="result-row"><span class="lbl">Kalan Alacak</span><span class="val yel" id="a-kalan-r">₺0</span></div>
+    </div>
+    <button class="btn" onclick="addAlacak()">+ ALACAK KAYDET</button>
+  </div>
+
+  <div class="section">
+    <div class="section-title">📊 ALACAK-BORÇ DURUMU</div>
+    <div class="grid-2">
+      <div>
+        <div class="section-title" style="font-size:12px;color:var(--green)">ALACAKLAR</div>
+        <div class="tbl-wrap scrollable">
+          <table>
+            <thead><tr><th>Borçlu</th><th>Tür</th><th>Alacak ₺</th><th>Tahsil ₺</th><th>Kalan ₺</th><th>Vade</th><th>İşlem</th></tr></thead>
+            <tbody id="alacak-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <div class="stat-card" style="margin-bottom:12px">
+          <div class="sc-lbl">Toplam Alacak</div>
+          <div class="sc-val pos" id="toplam-alacak">₺0</div>
+        </div>
+        <div class="stat-card" style="margin-bottom:12px">
+          <div class="sc-lbl">Toplam Tahsil</div>
+          <div class="sc-val neu" id="toplam-tahsil">₺0</div>
+        </div>
+        <div class="stat-card">
+          <div class="sc-lbl">Kalan Alacak</div>
+          <div class="sc-val yel" id="toplam-kalan">₺0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TAB 4: ORTAKLAR -->
+<!-- ============================================================ -->
+<div id="tab-sirket" class="panel">
+  <div class="section">
+    <div class="section-title">👥 ORTAK CARİ HESAP <span>— Alacak / Borç Bakiye</span></div>
+    <div class="grid-2">
+      <div>
+        <label>Ortak Adı</label>
+        <select id="o-ortak">
+          <option>Tamer YALINIZ</option>
+          <option>Feramiz YALINIZ</option>
+          <option>İlker YALINIZ</option>
+          <option>Mehmet BAYDUMAN</option>
+        </select>
+      </div>
+      <div>
+        <label>İşlem Türü</label>
+        <select id="o-tur">
+          <option value="alacak">Alacak (Gelen)</option>
+          <option value="borc">Borç (Giden)</option>
+        </select>
+      </div>
+    </div>
+    <div class="grid-3" style="margin-top:12px">
+      <div>
+        <label>Tarih</label>
+        <input type="date" id="o-tarih">
+      </div>
+      <div>
+        <label>Tutar (₺)</label>
+        <input type="number" id="o-tutar" placeholder="0">
+      </div>
+      <div>
+        <label>Açıklama</label>
+        <input type="text" id="o-aciklama" placeholder="Zekat, Nakit, Havale...">
+      </div>
+    </div>
+    <button class="btn" onclick="addOrtakHareket()">+ HAREKET EKLE</button>
+  </div>
+
+  <div class="section">
+    <div class="section-title">💼 ORTAK BAKİYELERİ</div>
+    <div class="grid-4" id="ortak-cards"></div>
+    <hr>
+    <div class="tbl-wrap scrollable">
+      <table>
+        <thead><tr><th>Ortak</th><th>İşlem</th><th>Tutar ₺</th><th>Tür</th><th>Tarih</th><th>İşlem</th></tr></thead>
+        <tbody id="ortak-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TAB 5: KASA -->
+<!-- ============================================================ -->
+<div id="tab-kasa" class="panel">
+  <div class="section">
+    <div class="section-title">💰 KASA HAREKETİ <span>— Günlük giriş / çıkış</span></div>
+    <div class="grid-4">
+      <div>
+        <label>Tarih</label>
+        <input type="date" id="kasa-tarih">
+      </div>
+      <div>
+        <label>Kaynak / Hesap</label>
+        <select id="kasa-hesap">
+          <option>NAKİT</option>
+          <option>ALTIN</option>
+          <option>EURO</option>
+          <option>DOLAR</option>
+          <option>ZİRAAT-1</option>
+          <option>ZİRAAT-2</option>
+          <option>İŞ-1</option>
+          <option>İŞ-2</option>
+          <option>HALK-1</option>
+          <option>HALK-2</option>
+          <option>HALK-3</option>
+          <option>VAKIF-1</option>
+          <option>VAKIF-2</option>
+          <option>YAPI KREDİ</option>
+          <option>İŞ FON</option>
+          <option>ZİRAAT FON</option>
+        </select>
+      </div>
+      <div>
+        <label>İşlem Türü</label>
+        <select id="kasa-tur">
+          <option value="giris">GİRİŞ</option>
+          <option value="cikis">ÇIKIŞ</option>
+        </select>
+      </div>
+      <div>
+        <label>Tutar (₺)</label>
+        <input type="number" id="kasa-tutar" placeholder="0">
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <label>Açıklama</label>
+      <input type="text" id="kasa-aciklama" placeholder="İşlem detayı...">
+    </div>
+    <button class="btn" onclick="addKasa()">+ KAYDET</button>
+  </div>
+
+  <div class="section">
+    <div class="section-title">📊 KASA DURUM TABLOSU</div>
+    <div class="grid-4" id="kasa-hesaplar"></div>
+    <hr>
+    <div class="result-box">
+      <div class="result-row"><span class="lbl">Toplam Giriş</span><span class="val pos" id="kasa-toplam-giris">₺0</span></div>
+      <div class="result-row"><span class="lbl">Toplam Çıkış</span><span class="val neg" id="kasa-toplam-cikis">₺0</span></div>
+      <div class="result-row"><span class="lbl" style="font-weight:700;color:var(--text)">NET KASA</span><span class="val yel" id="kasa-net" style="font-size:16px">₺0</span></div>
+    </div>
+    <div class="tbl-wrap scrollable" style="margin-top:16px">
+      <table>
+        <thead><tr><th>Tarih</th><th>Hesap</th><th>Açıklama</th><th>Giriş ₺</th><th>Çıkış ₺</th><th>Kümülatif ₺</th><th>İşlem</th></tr></thead>
+        <tbody id="kasa-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TAB 6: BİLANÇO -->
+<!-- ============================================================ -->
+<div id="tab-bilanco" class="panel">
+  <div class="section">
+    <div class="section-title">📊 BİLANÇO ÖZET <span>— Canlı hesaplama</span></div>
+    <div class="grid-4">
+      <div>
+        <label>Stok Değeri (₺)</label>
+        <input type="number" id="b-stok" placeholder="34965231" oninput="calcBilanco()">
+      </div>
+      <div>
+        <label>Kasa Bakiyesi (₺)</label>
+        <input type="number" id="b-kasa" placeholder="1517434" oninput="calcBilanco()">
+      </div>
+      <div>
+        <label>Alacak Senetleri (₺)</label>
+        <input type="number" id="b-senet" placeholder="782500" oninput="calcBilanco()">
+      </div>
+      <div>
+        <label>Alınan Çekler (₺)</label>
+        <input type="number" id="b-cek" placeholder="125000" oninput="calcBilanco()">
+      </div>
+      <div>
+        <label>Açık Alacaklar (₺)</label>
+        <input type="number" id="b-acik" placeholder="0" oninput="calcBilanco()">
+      </div>
+      <div>
+        <label>Toplam Borçlar (₺)</label>
+        <input type="number" id="b-borc" placeholder="4000" oninput="calcBilanco()">
+      </div>
+    </div>
+
+    <div class="result-box" style="margin-top:16px">
+      <div class="result-row"><span class="lbl">Dönen Varlıklar Toplamı</span><span class="val pos" id="b-varlik">₺0</span></div>
+      <div class="result-row"><span class="lbl">(–) Borçlar</span><span class="val neg" id="b-borc-r">₺0</span></div>
+      <div class="result-row"><span class="lbl">NET AKTİF</span><span class="val yel" id="b-net">₺0</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">👥 ORTAKLARA GÖRE SERMAYE DAĞILIMI</div>
+    <div class="info-tip">Algoritma: Sermaye = Öz Kaynak + (Toplam Kar × Ortak Payı %)</div>
+    <div id="ortak-bilanco-cards" class="grid-4"></div>
+    <div class="result-box" style="margin-top:16px">
+      <div class="result-row"><span class="lbl">Dönen Varlıklar (Gerçek)</span><span class="val pos" id="b-donenvarlik">₺0</span></div>
+      <div class="result-row"><span class="lbl">Bilanço Toplamı (Ortaklar)</span><span class="val neu" id="b-ortaktoplam">₺0</span></div>
+      <div class="result-row"><span class="lbl">Fark (Çıkan Fazlalık)</span><span class="val yel" id="b-fark">₺0</span></div>
+      <div class="result-row"><span class="lbl">Kar Oranı</span><span class="val pos" id="b-orani">%0</span></div>
+    </div>
+  </div>
+
+  <!-- Ortak Detay Girişi -->
+  <div class="section">
+    <div class="section-title">✏️ ORTAK SERMAYE GİRİŞİ</div>
+    <div id="ortak-giris-grid" class="grid-2"></div>
+    <button class="btn" onclick="calcBilanco()">🔄 YENİDEN HESAPLA</button>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TAB 7: ALGORİTMA DOC -->
+<!-- ============================================================ -->
+<div id="tab-formulas" class="panel">
+  <div class="section">
+    <div class="section-title">🔢 HESAP ALGORİTMALARI <span>— NİSAN_DEMO_2026.xlsx kaynaklı</span></div>
+
+    <div class="section-title" style="font-size:12px;color:var(--accent2);margin-top:8px;">1. ARAÇ MALİYET ALGORİTMASI</div>
+    <div class="formula-box">
+      <span class="comment">// STOK sayfasından çıkarılan formüller</span><br>
+      MASRAF = sigorta + noter + komisyon + yol_masrafi + kaporta + gocuk + muayene + diger<br>
+      TOPLAM_MALİYET = alis_fiyati + MASRAF<br><br>
+      <span class="comment">// Örnekler (Excel'den):</span><br>
+      MİTSUBİSHİ 34YL4249 → 583.000 + 13.330 = 596.330 ₺<br>
+      HILUX 01FDL78 → 325.000 + 5.500 = 330.500 ₺<br>
+      BMW 34PED073 → 4.130.000 + 0 = 4.130.000 ₺
+    </div>
+
+    <div class="section-title" style="font-size:12px;color:var(--accent2);margin-top:16px;">2. NET KAR-ZARAR ALGORİTMASI</div>
+    <div class="formula-box">
+      NET_KAR = satis_fiyati - TOPLAM_MALİYET<br><br>
+      <span class="comment">// Mart 2026 satılan araçlar örneği:</span><br>
+      MEGANE 34BFJ584 → 1.120.000 - 977.800 = 142.200 ₺ KAR<br>
+      AUDİA5 01BCR802 → 1.085.000 - 801.500 = 283.500 ₺ KAR<br>
+      HILUX 09AGR986 → 1.560.000 - 1.476.690 = 83.310 ₺ KAR<br>
+      MEGANE 34HAY131 → 1.007.000 - 1.007.000 = 0 ₺ (BAŞABAŞ)<br><br>
+      <span class="comment">// Mart 2026 toplam kar: 882.870 ₺</span>
+    </div>
+
+    <div class="section-title" style="font-size:12px;color:var(--accent2);margin-top:16px;">3. KİRALAMA GELİR ALGORİTMASI</div>
+    <div class="formula-box">
+      TOPLAM_KİRA_GELİRİ = aylik_kira × kira_suresi_ay<br>
+      KIRA_MASRAFI = sigorta + kasko + noter + takip_cihazi + kredi_masrafi<br>
+      NET_KİRA_GELİRİ = TOPLAM_KİRA_GELİRİ - KIRA_MASRAFI<br>
+      BİTİŞ_TARİHİ = baslangic + kira_suresi_ay (ay bazında)<br><br>
+      YILLIK_GETİRİ_ORANI = (NET_KİRA_GELİRİ / 12 × 12) / araç_maliyet × 100<br><br>
+      <span class="comment">// Excel'den: TOPLAM GELEN = 601.000 ₺ (Mart 2026)</span><br>
+      <span class="comment">// GENEL TOPLAM MALİYET: 22.852.229 ₺ filo değeri</span><br>
+      <span class="comment">// TOPLAM KİRA MASRAF: 1.410.195 ₺ (sigorta+kasko+noter+takip+kredi)</span>
+    </div>
+
+    <div class="section-title" style="font-size:12px;color:var(--accent2);margin-top:16px;">4. ALACAK TAKİP ALGORİTMASI</div>
+    <div class="formula-box">
+      KALAN_ALACAK = toplam_alacak - tahsil_edilen<br>
+      TAHSILAT_ORANI = tahsil_edilen / toplam_alacak × 100<br><br>
+      <span class="comment">// Alacak türleri:</span><br>
+      AÇIK_ALACAK → kişiden direkt borç (Görkem Çelik 165.000×4 senet)<br>
+      ALINAN_ÇEK → vadeli çek (Soner Uçan: 135.000+155.000=290.000)<br>
+      SENET → noter onaylı (Tolgahan Avcı 270.000, kalan 200.000)<br><br>
+      <span class="comment">// Excel toplam alacak: 6.862.347 ₺ (açık) + 290.000 ₺ (çek)</span>
+    </div>
+
+    <div class="section-title" style="font-size:12px;color:var(--accent2);margin-top:16px;">5. ORTAK CARİ HESAP ALGORİTMASI</div>
+    <div class="formula-box">
+      ORTAK_BAKİYE = SUM(alacaklar) - SUM(borclar)<br>
+      Bakiye > 0 → Şirketten alacaklı (A)<br>
+      Bakiye &lt; 0 → Şirkete borçlu (B)<br><br>
+      <span class="comment">// Excel'den Mart 2026 son bakiyeler:</span><br>
+      Tamer YALINIZ   → 1.191.000 - 1.553.790 = -362.790 (B)<br>
+      Feramiz YALINIZ → 735.000 - 35.000 = +700.000 (A)<br>
+      İlker YALINIZ   → 1.380.000 - 645.160 = +734.840 (A)<br>
+      Mehmet BAYDUMAN → 66.000 - 6.754 = +59.246 (A)
+    </div>
+
+    <div class="section-title" style="font-size:12px;color:var(--accent2);margin-top:16px;">6. BİLANÇO ALGORİTMASI</div>
+    <div class="formula-box">
+      DÖNEN_VARLIKLAR = stok + kasa + alinan_cekler + alacak_senetleri + acik_alacaklar - borclar<br><br>
+      ORTAK_SERMAYE = özkaynak + (toplam_kar × pay_orani)<br><br>
+      KAR_ORANI = (DÖNEN_VARLIKLAR - BILANÇO_TOPLAMI) / BILANÇO_TOPLAMI<br><br>
+      <span class="comment">// Excel NİSAN 2026:</span><br>
+      Stok: 34.965.231 + Kasa: 1.517.434 + Çek: 125.000 + Senet: 782.500 = 37.390.165<br>
+      Bilanço Toplamı (ortaklar): 40.298.068<br>
+      Çıkan Fazlalık (kar dahil): 1.564.124<br>
+      KAR_ORANI = 1.564.124 / 40.298.068 = %3.88
+    </div>
+
+    <div class="section-title" style="font-size:12px;color:var(--accent2);margin-top:16px;">7. ÖDEME ŞEKLİ PARSE ALGORİTMASI</div>
+    <div class="formula-box">
+      <span class="comment">// "1.000.000İŞ+85.000 VAKIF" → parse et:</span><br>
+      parseOdeme("406700MEMOŞ+110.000NAKİT+233.300ZİRAAT")<br>
+      → [{tutar:406700, banka:"MEMOŞ"}, {tutar:110000, banka:"NAKİT"}, {tutar:233300, banka:"ZİRAAT"}]<br>
+      → TOPLAM = 406700+110000+233300 = 750.000 ₺ ✓
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────
+const state = {
+  stok: [],
+  kira: [],
+  alacak: [],
+  ortak: { 
+    hareketler: [],
+    bakiye: {
+      'Tamer YALINIZ': { alacak: 0, borc: 0 },
+      'Feramiz YALINIZ': { alacak: 0, borc: 0 },
+      'İlker YALINIZ': { alacak: 0, borc: 0 },
+      'Mehmet BAYDUMAN': { alacak: 0, borc: 0 }
+    }
+  },
+  kasa: []
+};
+
+// ─────────────────────────────────────────────────────
+// UTILS
+// ─────────────────────────────────────────────────────
+const f = n => '₺' + Math.round(n||0).toLocaleString('tr-TR');
+const fn = n => Math.round(n||0).toLocaleString('tr-TR');
+const v = id => parseFloat(document.getElementById(id)?.value) || 0;
+const g = id => document.getElementById(id)?.value || '';
+const set = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+const setClass = (id, cls) => { const el = document.getElementById(id); if(el) el.className = 'val '+cls; };
+
+function addMonths(dateStr, months) {
+  if(!dateStr) return '—';
+  const d = new Date(dateStr);
+  d.setMonth(d.getMonth() + parseInt(months));
+  return d.toLocaleDateString('tr-TR');
+}
+
+// ─────────────────────────────────────────────────────
+// TABS
+// ─────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if(name==='bilanco') calcBilanco();
+  if(name==='kasa') renderKasa();
+  if(name==='sirket') renderOrtak();
+}
+
+// ─────────────────────────────────────────────────────
+// STOK HESABI
+// ─────────────────────────────────────────────────────
+function calcStok() {
+  const alis = v('s-alis');
+  const masraf = v('m-sigorta') + v('m-noter') + v('m-komisyon') + v('m-yol') +
+                 v('m-kaporta') + v('m-gocuk') + v('m-muayene') + v('m-diger');
+  const maliyet = alis + masraf;
+  const satis = v('s-satis');
+  const kar = satis - maliyet;
+
+  set('r-alis', f(alis));
+  set('r-masraf', f(masraf));
+  set('r-maliyet', f(maliyet));
+
+  if(satis > 0) {
+    const box = document.getElementById('kar-box');
+    box.style.display = 'block';
+    const lbl = document.getElementById('kar-lbl');
+    const val = document.getElementById('kar-val');
+    const det = document.getElementById('kar-detail');
+    lbl.textContent = kar >= 0 ? 'NET KAR' : 'NET ZARAR';
+    val.textContent = f(Math.abs(kar));
+    val.className = 'val ' + (kar >= 0 ? 'pos' : 'neg');
+    det.textContent = `Maliyet: ${f(maliyet)} → Satış: ${f(satis)} → Fark: ${f(kar)}`;
+  }
+}
+
+function addToStok() {
+  const alis = v('s-alis');
+  if(!alis) { alert('Alış fiyatı giriniz'); return; }
+  const masraf = v('m-sigorta') + v('m-noter') + v('m-komisyon') + v('m-yol') +
+                 v('m-kaporta') + v('m-gocuk') + v('m-muayene') + v('m-diger');
+  const maliyet = alis + masraf;
+  const satis = v('s-satis');
+  const kar = satis ? satis - maliyet : null;
+
+  state.stok.push({
+    id: Date.now(),
+    plaka: g('s-plaka'),
+    model: g('s-model'),
+    yil: g('s-yil'),
+    alis, masraf, maliyet, satis, kar,
+    alicidan: g('s-alicidan'),
+    alici: g('s-alici'),
+    tarih: g('s-tarih'),
+    odeme: g('s-odeme'),
+    durum: satis ? 'SATILDI' : 'STOKTA'
+  });
+  renderStokTable();
+}
+
+function renderStokTable() {
+  const srch = g('stok-search').toLowerCase();
+  const tbody = document.getElementById('stok-body');
+  const rows = state.stok.filter(r =>
+    (!srch || r.plaka.toLowerCase().includes(srch) || r.model.toLowerCase().includes(srch))
+  );
+  tbody.innerHTML = rows.map((r, i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td><b>${r.plaka}</b></td>
+      <td>${r.model}</td>
+      <td>${r.yil}</td>
+      <td class="pos">${fn(r.alis)}</td>
+      <td class="yel">${fn(r.masraf)}</td>
+      <td><b>${fn(r.maliyet)}</b></td>
+      <td class="neu">${r.satis ? fn(r.satis) : '—'}</td>
+      <td class="${r.kar > 0 ? 'pos' : r.kar < 0 ? 'neg' : 'neu'}">${r.kar !== null ? fn(r.kar) : '—'}</td>
+      <td><span class="badge ${r.durum==='SATILDI' ? 'badge-green' : 'badge-yellow'}">${r.durum}</span></td>
+      <td><button class="btn btn-danger btn-sm" onclick="delStok(${r.id})">SİL</button></td>
+    </tr>
+  `).join('');
+
+  const stokta = state.stok.filter(r => r.durum !== 'SATILDI');
+  const satilan = state.stok.filter(r => r.durum === 'SATILDI');
+  set('stok-count', stokta.length);
+  set('stok-total', f(stokta.reduce((s, r) => s + r.maliyet, 0)));
+  set('stok-kar', f(satilan.reduce((s, r) => s + (r.kar || 0), 0)));
+}
+
+function delStok(id) {
+  state.stok = state.stok.filter(r => r.id !== id);
+  renderStokTable();
+}
+
+// ─────────────────────────────────────────────────────
+// KİRALAMA HESABI
+// ─────────────────────────────────────────────────────
+function calcKira() {
+  const kira = v('k-kira');
+  const sure = v('k-sure');
+  const maliyet = v('k-maliyet');
+  const masraf = v('km-sigorta') + v('km-kasko') + v('km-noter') + v('km-takip') + v('km-kredi') + v('km-diger');
+  const brut = kira * sure;
+  const net = brut - masraf;
+  const bitis = addMonths(g('k-baslangic'), sure);
+  const yillikGetiri = maliyet > 0 ? ((kira * 12) / maliyet * 100).toFixed(1) : '—';
+
+  set('k-toplam-gelir', f(brut));
+  set('k-toplam-masraf', f(masraf));
+  set('k-net', f(net));
+  set('k-bitis', bitis);
+  set('k-getiri', maliyet > 0 ? '%' + yillikGetiri : '—');
+}
+
+function addKira() {
+  const kira = v('k-kira');
+  if(!kira) { alert('Aylık kira tutarı giriniz'); return; }
+  const sure = v('k-sure') || 1;
+  const masraf = v('km-sigorta') + v('km-kasko') + v('km-noter') + v('km-takip') + v('km-kredi') + v('km-diger');
+  const brut = kira * sure;
+  const net = brut - masraf;
+  const bitis = addMonths(g('k-baslangic'), sure);
+
+  state.kira.push({
+    id: Date.now(),
+    plaka: g('k-plaka'),
+    model: g('k-model'),
+    kiraci: g('k-kiraci'),
+    kira, sure, masraf, brut, net,
+    baslangic: g('k-baslangic'),
+    bitis,
+    maliyet: v('k-maliyet'),
+    durum: 'KİRADA'
+  });
+  renderKira();
+}
+
+function renderKira() {
+  const tbody = document.getElementById('kira-body');
+  tbody.innerHTML = state.kira.map((r, i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td><b>${r.plaka}</b></td>
+      <td>${r.model}</td>
+      <td>${r.kiraci}</td>
+      <td class="pos">${fn(r.kira)}</td>
+      <td>${r.sure} ay</td>
+      <td>${r.baslangic || '—'}</td>
+      <td>${r.bitis}</td>
+      <td class="neu"><b>${fn(r.brut)}</b></td>
+      <td><span class="badge badge-green">${r.durum}</span></td>
+      <td><button class="btn btn-danger btn-sm" onclick="delKira(${r.id})">SİL</button></td>
+    </tr>
+  `).join('');
+
+  set('kira-count', state.kira.length);
+  set('kira-ay-gelir', f(state.kira.reduce((s, r) => s + r.kira, 0)));
+  set('kira-bos', 0);
+}
+
+function delKira(id) {
+  state.kira = state.kira.filter(r => r.id !== id);
+  renderKira();
+}
+
+// ─────────────────────────────────────────────────────
+// ALACAK-BORÇ
+// ─────────────────────────────────────────────────────
+function calcAlacak() {
+  const tutar = v('a-tutar');
+  const gelen = v('a-gelen');
+  set('a-alacak-r', f(tutar));
+  set('a-gelen-r', f(gelen));
+  set('a-kalan-r', f(tutar - gelen));
+}
+
+function addAlacak() {
+  const tutar = v('a-tutar');
+  if(!tutar) { alert('Tutar giriniz'); return; }
+  const gelen = v('a-gelen');
+  state.alacak.push({
+    id: Date.now(),
+    borclu: g('a-borçlu'),
+    tur: g('a-tur'),
+    tutar, gelen,
+    kalan: tutar - gelen,
+    vade: g('a-vade'),
+    aciklama: g('a-aciklama')
+  });
+  renderAlacak();
+}
+
+function renderAlacak() {
+  const tbody = document.getElementById('alacak-body');
+  tbody.innerHTML = state.alacak.map((r) => `
+    <tr>
+      <td>${r.borclu}</td>
+      <td><span class="badge ${r.tur==='borc' ? 'badge-red' : 'badge-green'}">${r.tur.toUpperCase()}</span></td>
+      <td class="pos">${fn(r.tutar)}</td>
+      <td class="neu">${fn(r.gelen)}</td>
+      <td class="${r.kalan > 0 ? 'yel' : 'pos'}">${fn(r.kalan)}</td>
+      <td>${r.vade || '—'}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="delAlacak(${r.id})">SİL</button></td>
+    </tr>
+  `).join('');
+
+  const toplam = state.alacak.filter(r=>r.tur!=='borc').reduce((s,r)=>s+r.tutar,0);
+  const tahsil = state.alacak.filter(r=>r.tur!=='borc').reduce((s,r)=>s+r.gelen,0);
+  set('toplam-alacak', f(toplam));
+  set('toplam-tahsil', f(tahsil));
+  set('toplam-kalan', f(toplam - tahsil));
+}
+
+function delAlacak(id) {
+  state.alacak = state.alacak.filter(r => r.id !== id);
+  renderAlacak();
+}
+
+// ─────────────────────────────────────────────────────
+// ORTAK
+// ─────────────────────────────────────────────────────
+function addOrtakHareket() {
+  const tutar = v('o-tutar');
+  if(!tutar) { alert('Tutar giriniz'); return; }
+  const ortak = g('o-ortak');
+  const tur = g('o-tur');
+  state.ortak.hareketler.push({
+    id: Date.now(),
+    ortak, tur, tutar,
+    tarih: g('o-tarih'),
+    aciklama: g('o-aciklama')
+  });
+  renderOrtak();
+}
+
+function renderOrtak() {
+  const tbody = document.getElementById('ortak-body');
+  tbody.innerHTML = state.ortak.hareketler.map(r => `
+    <tr>
+      <td>${r.ortak}</td>
+      <td>${r.aciklama}</td>
+      <td><b>${fn(r.tutar)}</b></td>
+      <td><span class="badge ${r.tur==='alacak' ? 'badge-green' : 'badge-red'}">${r.tur.toUpperCase()}</span></td>
+      <td>${r.tarih || '—'}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="delOrtak(${r.id})">SİL</button></td>
+    </tr>
+  `).join('');
+
+  // Bakiyeler
+  const ortaklar = ['Tamer YALINIZ', 'Feramiz YALINIZ', 'İlker YALINIZ', 'Mehmet BAYDUMAN'];
+  const colors = ['yel', 'accent2', 'green', 'neu'];
+  const cards = document.getElementById('ortak-cards');
+  cards.innerHTML = ortaklar.map((ad, i) => {
+    const hareketler = state.ortak.hareketler.filter(h => h.ortak === ad);
+    const alacak = hareketler.filter(h=>h.tur==='alacak').reduce((s,h)=>s+h.tutar,0);
+    const borc = hareketler.filter(h=>h.tur==='borc').reduce((s,h)=>s+h.tutar,0);
+    const bakiye = alacak - borc;
+    return `<div class="stat-card">
+      <div class="sc-lbl">${ad}</div>
+      <div class="sc-val ${bakiye >= 0 ? 'pos' : 'neg'}">${f(Math.abs(bakiye))}</div>
+      <div class="sc-sub">${bakiye >= 0 ? '▲ Alacaklı' : '▼ Borçlu'}</div>
+      <div class="prog-bar"><div class="prog-fill" style="width:${Math.min(100, Math.abs(bakiye)/10000)}%;background:var(--${bakiye>=0 ? 'green':'accent3'})"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function delOrtak(id) {
+  state.ortak.hareketler = state.ortak.hareketler.filter(r => r.id !== id);
+  renderOrtak();
+}
+
+// ─────────────────────────────────────────────────────
+// KASA
+// ─────────────────────────────────────────────────────
+function addKasa() {
+  const tutar = v('kasa-tutar');
+  if(!tutar) { alert('Tutar giriniz'); return; }
+  state.kasa.push({
+    id: Date.now(),
+    tarih: g('kasa-tarih'),
+    hesap: g('kasa-hesap'),
+    tur: g('kasa-tur'),
+    tutar,
+    aciklama: g('kasa-aciklama')
+  });
+  renderKasa();
+}
+
+function renderKasa() {
+  const hesaplar = ['NAKİT','ALTIN','EURO','DOLAR','ZİRAAT-1','ZİRAAT-2','İŞ-1','İŞ-2','HALK-1','HALK-2','HALK-3','VAKIF-1','VAKIF-2','YAPI KREDİ','İŞ FON','ZİRAAT FON'];
+  const cards = document.getElementById('kasa-hesaplar');
+  cards.innerHTML = hesaplar.map(h => {
+    const giris = state.kasa.filter(r=>r.hesap===h&&r.tur==='giris').reduce((s,r)=>s+r.tutar,0);
+    const cikis = state.kasa.filter(r=>r.hesap===h&&r.tur==='cikis').reduce((s,r)=>s+r.tutar,0);
+    const kalan = giris - cikis;
+    if(!giris && !cikis) return '';
+    return `<div class="stat-card">
+      <div class="sc-lbl">${h}</div>
+      <div class="sc-val ${kalan>=0?'pos':'neg'}">${f(kalan)}</div>
+      <div class="sc-sub">Giriş: ${fn(giris)} / Çıkış: ${fn(cikis)}</div>
+    </div>`;
+  }).join('');
+
+  let cum = 0;
+  const tbody = document.getElementById('kasa-body');
+  tbody.innerHTML = [...state.kasa].sort((a,b)=>a.tarih?.localeCompare(b.tarih||'')||0).map(r => {
+    cum += r.tur==='giris' ? r.tutar : -r.tutar;
+    return `<tr>
+      <td>${r.tarih||'—'}</td>
+      <td><span class="badge badge-blue">${r.hesap}</span></td>
+      <td>${r.aciklama}</td>
+      <td class="pos">${r.tur==='giris' ? fn(r.tutar) : '—'}</td>
+      <td class="neg">${r.tur==='cikis' ? fn(r.tutar) : '—'}</td>
+      <td class="${cum>=0?'yel':'neg'}">${fn(cum)}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="delKasa(${r.id})">SİL</button></td>
+    </tr>`;
+  }).join('');
+
+  const giris = state.kasa.filter(r=>r.tur==='giris').reduce((s,r)=>s+r.tutar,0);
+  const cikis = state.kasa.filter(r=>r.tur==='cikis').reduce((s,r)=>s+r.tutar,0);
+  set('kasa-toplam-giris', f(giris));
+  set('kasa-toplam-cikis', f(cikis));
+  set('kasa-net', f(giris - cikis));
+}
+
+function delKasa(id) {
+  state.kasa = state.kasa.filter(r => r.id !== id);
+  renderKasa();
+}
+
+// ─────────────────────────────────────────────────────
+// BİLANÇO
+// ─────────────────────────────────────────────────────
+const ortaklar = [
+  { ad: 'Tamer YALINIZ', ozkaynak: 9317835, kar: 361531 },
+  { ad: 'Feramiz YALINIZ', ozkaynak: 22548949, kar: 874899 },
+  { ad: 'İlker YALINIZ', ozkaynak: 4287599, kar: 166358 },
+  { ad: 'Mehmet BAYDUMAN', ozkaynak: 4143685, kar: 160774 }
+];
+
+function buildOrtakGiris() {
+  const grid = document.getElementById('ortak-giris-grid');
+  grid.innerHTML = ortaklar.map((o, i) => `
+    <div>
+      <label>${o.ad} — Öz Kaynak (₺)</label>
+      <input type="number" id="b-ozk-${i}" value="${o.ozkaynak}" oninput="calcBilanco()">
+      <label style="margin-top:8px">${o.ad} — Kar Payı (₺)</label>
+      <input type="number" id="b-kar-${i}" value="${o.kar}" oninput="calcBilanco()">
+    </div>
+  `).join('');
+}
+
+function calcBilanco() {
+  const stok = v('b-stok');
+  const kasa = v('b-kasa');
+  const senet = v('b-senet');
+  const cek = v('b-cek');
+  const acik = v('b-acik');
+  const borc = v('b-borc');
+  const varlik = stok + kasa + senet + cek + acik;
+  const net = varlik - borc;
+
+  set('b-varlik', f(varlik));
+  set('b-borc-r', f(borc));
+  set('b-net', f(net));
+  set('b-donenvarlik', f(net));
+
+  const cards = document.getElementById('ortak-bilanco-cards');
+  let ortakToplam = 0;
+  cards.innerHTML = ortaklar.map((o, i) => {
+    const ozk = parseFloat(document.getElementById('b-ozk-'+i)?.value) || o.ozkaynak;
+    const kar = parseFloat(document.getElementById('b-kar-'+i)?.value) || o.kar;
+    const toplam = ozk + kar;
+    ortakToplam += toplam;
+    return `<div class="stat-card">
+      <div class="sc-lbl">${o.ad}</div>
+      <div class="sc-val pos">${f(toplam)}</div>
+      <div class="sc-sub">Özkaynak: ${fn(ozk)}</div>
+      <div class="sc-sub">Kar Payı: ${fn(kar)}</div>
+    </div>`;
+  }).join('');
+
+  const fark = net - ortakToplam;
+  const oran = ortakToplam > 0 ? (fark / ortakToplam * 100).toFixed(2) : 0;
+  set('b-ortaktoplam', f(ortakToplam));
+  set('b-fark', f(fark));
+  set('b-orani', '%' + oran);
+}
+
+// ─────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────
+buildOrtakGiris();
+calcBilanco();
+
+// Demo verilerle başlat (Excel'den alınan örnek satırlar)
+const demoStok = [
+  { plaka:'34YL4249', model:'MİTSUBİSHİ', yil:'2017', alis:583000, masraf:13330, maliyet:596330, satis:null, kar:null, alicidan:'AYDOĞAN', alici:'', tarih:'', odeme:'', durum:'STOKTA' },
+  { plaka:'01BCR802', model:'AUDİ A5', yil:'2012', alis:800000, masraf:1500, maliyet:801500, satis:1085000, kar:283500, alicidan:'YAVUZ ACAR', alici:'GAZİANTEP MUSA ARIK', tarih:'2026-03-09', odeme:'1.000.000İŞ+85.000VAKIF', durum:'SATILDI' },
+  { plaka:'09AGR986', model:'HİLUX', yil:'2022', alis:1475000, masraf:1690, maliyet:1476690, satis:1560000, kar:83310, alicidan:'OLCAY ÇELİK', alici:'MERSİN GÜRGENÇLER', tarih:'2026-03-13', odeme:'1312500İŞ+247500TEB', durum:'SATILDI' },
+  { plaka:'34PED073', model:'BMW 3.20İ', yil:'2024', alis:4130000, masraf:0, maliyet:4130000, satis:null, kar:null, alicidan:'MENGERLER-NEŞE', alici:'', tarih:'', odeme:'', durum:'STOKTA' },
+];
+demoStok.forEach(r => { r.id = Date.now() + Math.random(); state.stok.push(r); });
+renderStokTable();
+
+const demoKira = [
+  { id:1, plaka:'01-BFK-267', model:'OPEL CORSA', kiraci:'Hekimbey', kira:42000, sure:6, masraf:0, brut:252000, net:252000, baslangic:'2026-03-03', bitis:'03.09.2026', maliyet:1330092, durum:'KİRADA' },
+  { id:2, plaka:'01-BFK-275', model:'CİTROEN C3', kiraci:'Umut YANAR', kira:45000, sure:6, masraf:0, brut:270000, net:270000, baslangic:'2026-02-25', bitis:'25.08.2026', maliyet:1635092, durum:'KİRADA' },
+  { id:3, plaka:'01-BFL-466', model:'OPEL COMBO', kiraci:'Tolga Özkarakoyuncu', kira:35000, sure:1, masraf:0, brut:35000, net:35000, baslangic:'2026-03-12', bitis:'12.04.2026', maliyet:1256225, durum:'KİRADA' },
+];
+demoKira.forEach(r => state.kira.push(r));
+renderKira();
+</script>
+</body>
+</html>
