@@ -31,6 +31,15 @@ Sol sekmedeki genel kalabalığı azaltmak için "Gider Defteri" sayfası silini
 - "Pazarlama" sekmesi ihtiyaç olmadığı için projeden komple kaldırıldı. 
 - Yüklenen veya listelenen kayıtlar esnasında sayfanın/tabloların anlık takılmaması için bileşen içeriklerine animasyon ve render düzeltmeleri uygulandı.
 
+### 7. 📄 Evrak Yönetimi ve Göğüs Ekspertiz Kartları (A4 Print)
+- Araç düzenleme modalına Alış, Satış ve Kira evraklarına ek olarak **"Araç Satış Sözleşmesi"** alanı eklendi (`saleContractDoc`).
+- Eski tip karekodlu "Reklam Çıktısı", tamamen modern **Araç Göğüs Ekspertiz Tanıtım Kartı** yapısına çevrildi. Montserrat fontuyla A4 (Dikey) boyutlarına entegre edilerek, karekod olmadan doğrudan okunabilir, yüksek kontrastlı ve garanti rozetleriyle donatılmış bir araç içi tanıtım PDF şablonuna dönüştürüldü.
+
+### 8. 💵 Gelişmiş Kiralama ve Tahsilat İşlemleri
+- Araç Stoğu ve Kiralık Araç Stoğu (`RentalTab.tsx`) listelerindeki finansal görünürlükler birleştirildi. Artık "Kirada" statüsündeki bir aracın tabloda direkt olarak **Kira Ücreti** ve alt satırında yeşil renkle **Tahsil Edilen (₺)** miktarı beraber gösterilmektedir.
+- Türkçe formatla (noktalı vb.) yazılan sayısal değerlerin veritabanında patlamasını (veya boş/sıfır olarak değerlendirilmesini) önlemek amacıyla `parseTRNumber` (global bir sayı çevirici) entegre edildi. 
+- "Tahsil Edilen (₺)" kutusu araç düzenleme modalına doğrudan açıldı. Böylelikle yöneticiler modaldan çıkmadan tahsilatları tutar olarak manuel belirleyebilme özelliğine kavuştu.
+
 ---
 
 ## 🛠️ Modül ve Dosya Hiyerarşisi (Güncel)
