@@ -20,11 +20,13 @@ export type Vehicle = {
   inspection: string;
   purchasePrice: number;
   expenses: number;
+  expenseNotes?: string;  // Masraf açıklaması
   salePrice: number;
   status: 'Stokta' | 'Satıldı' | 'Rezerve' | 'Serviste' | 'Kiralık' | 'Kirada';
   image: string;
   expertiseImage: string;
   expertiseNotes: string;
+  tramerAmount?: number;   // Tramer kayıt tutarı (TL)
   notes: string;
   damageMap: Record<string, string>;
   // ── Sigorta ──
@@ -49,9 +51,21 @@ export type Vehicle = {
   renterPhone?: string;
   rentalStart?: string;
   rentalEnd?: string;
-  dailyPrice?: number;
+  rentalPeriod?: string;
+  dailyPrice?: number; // Representing Kira Ucreti
+  rentalDebt?: number; // E.g., 144.000
+  rentalCollected?: number; // Tahsil edilen toplam tutar
+  rentalPaymentStatus?: string; // Alındı, Alınmadı
+  rentalInvoiceStatus?: string; // Kesildi, Kesilmedi
+  // ── Evrak / Belge ──
+  purchaseDoc?: string;
+  saleDoc?: string;
+  rentalDoc?: string; // Kira sözleşmesi
+  saleContractDoc?: string; // Araç Satış Sözleşmesi
+  // ────────────────────────
   // ────────────────────────
   createdAt?: number;
+  order?: number; // Excel'deki gibi spesifik bir sırası numarası 1, 2, 3...
 };
 
 export type Partner = {

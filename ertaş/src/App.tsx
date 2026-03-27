@@ -4,9 +4,9 @@ import {
   Bell, Trash2, Edit2, Save, ChevronRight, Briefcase,
   Lock, FileText, X, Archive, RefreshCw,
   Clock, Download, SlidersHorizontal, Tag, AlertTriangle,
-  BarChart3, Receipt, UserCheck, Calculator, Printer
+  BarChart3, Receipt, UserCheck, Calculator, Printer, Bot
 } from 'lucide-react';
-import { useVehicles, usePartners, useExpenses, useIncomes, useCustomers, useVehicleExpenses, useKasa, useAlacakBorc, useOrtakHareketler, uploadImage, type Vehicle } from './hooks';
+import { useVehicles, usePartners, useExpenses, useIncomes, useCustomers, useKasa, useAlacakBorc, useOrtakHareketler, uploadImage, type Vehicle } from './hooks';
 import HgsTab from './HgsTab';
 import CarDiagram from './CarDiagram';
 import KasaTab from './KasaTab';
@@ -20,6 +20,8 @@ import CrmTab from './CrmTab';
 import RentalTab from './RentalTab';
 import PartnersTab from './PartnersTab';
 import FinanceTab from './FinanceTab';
+import BotTab from './BotTab';
+import AracTaramaTab from './AracTaramaTab';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -36,15 +38,17 @@ const statusStyle: Record<string, string> = {
 };
 
 const EMPTY_VEHICLE = {
-  brand: '', series: '', year: '', km: '', color: '', plate: '', inspection: '',
-  purchasePrice: '', expenses: '', salePrice: '', notes: '', expertiseNotes: '',
+  brand: '', series: '', year: '', km: '', fuel: '', gear: '', color: '', plate: '', inspection: '',
+  purchasePrice: '', expenses: '', expenseNotes: '', salePrice: '', notes: '', expertiseNotes: '', tramerAmount: '',
   status: 'Stokta' as Vehicle['status'],
   purchaseDate: '', soldDate: '',
   sellerName: '', sellerPhone: '', sellerIdNo: '', sellerAddress: '',
   buyerName: '', buyerPhone: '', buyerIdNo: '', buyerAddress: '',
   damageMap: {} as Record<string, string>,
   insuranceCompany: '', insurancePolicyNo: '', insuranceStart: '', insuranceEnd: '',
-  renterName: '', renterPhone: '', rentalStart: '', rentalEnd: '', dailyPrice: '',
+  renterName: '', renterPhone: '', rentalStart: '', rentalEnd: '', rentalPeriod: '', dailyPrice: '',
+  rentalDebt: '', rentalPaymentStatus: '', rentalInvoiceStatus: '', rentalCollected: '',
+  purchaseDoc: '', saleDoc: '', rentalDoc: '', saleContractDoc: '',
 };
 
 // ─── App ──────────────────────────────────────────────────────────────────────
@@ -62,6 +66,14 @@ export default function App() {
   const [imgPreview, setImgPreview] = useState('');
   const [expFile, setExpFile] = useState<File | null>(null);
   const [expPreview, setExpPreview] = useState('');
+  const [purchaseDocFile, setPurchaseDocFile] = useState<File | null>(null);
+  const [purchaseDocPreview, setPurchaseDocPreview] = useState('');
+  const [saleDocFile, setSaleDocFile] = useState<File | null>(null);
+  const [saleDocPreview, setSaleDocPreview] = useState('');
+  const [rentalDocFile, setRentalDocFile] = useState<File | null>(null);
+  const [rentalDocPreview, setRentalDocPreview] = useState('');
+  const [saleContractDocFile, setSaleContractDocFile] = useState<File | null>(null);
+  const [saleContractDocPreview, setSaleContractDocPreview] = useState('');
   const [saving, setSaving] = useState(false);
 
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -95,21 +107,54 @@ export default function App() {
 
 
   // ── Stats ──────────────────────────────────────────────────────────────────
+  const combinedIncomes = useMemo(() => {
+    const generated = vehicles
+      .filter(v => ['Kirada', 'Kiralık'].includes(v.status) && v.rentalPaymentStatus === 'Alındı' && v.dailyPrice && v.dailyPrice > 0)
+      .map(v => ({
+        id: `rental-${v.id}`,
+        label: `Kira Geliri (${v.plate || v.brand}) - ${v.renterName || 'Bilinmiyor'}`,
+        amount: v.dailyPrice || 0,
+        category: 'Kira Geliri',
+        month: v.rentalStart ? v.rentalStart.substring(0, 7) : new Date().toISOString().slice(0, 7),
+      }));
+    return [...incomes, ...generated];
+  }, [vehicles, incomes]);
+
+  const customRemoveIncome = async (id: string) => {
+    if (id.startsWith('rental-')) {
+      alert('Bu gelir kira modülünden (Tahsilat: Alındı) otomatik eklendiği için buradan silinemez. Kira tablosundan aracı düzenleyerek durumu değiştirebilirsiniz.');
+      return;
+    }
+    await removeIncome(id);
+  };
+
   const stats = useMemo(() => {
     const sold = vehicles.filter(v => v.status === 'Satıldı');
-    const inStock = vehicles.filter(v => v.status === 'Stokta');
+    const inStock = vehicles.filter(v => v.status !== 'Satıldı');
     const stockValue = inStock.reduce((a, v) => a + (v.purchasePrice || 0), 0);
     const grossProfit = sold.reduce((a, v) => a + ((v.salePrice || 0) - (v.purchasePrice || 0) - (v.expenses || 0)), 0);
     const totalExpenses = expenses.reduce((a, e) => a + (e.amount || 0), 0);
-    const totalIncomes = incomes.reduce((a, e) => a + (e.amount || 0), 0);
+    const totalIncomes = combinedIncomes.reduce((a, e) => a + (e.amount || 0), 0);
     const netProfit = grossProfit + totalIncomes - totalExpenses;
     return { sold: sold.length, inStock: inStock.length, stockValue, grossProfit, netProfit, totalExpenses, totalIncomes };
-  }, [vehicles, expenses, incomes]);
+  }, [vehicles, expenses, combinedIncomes]);
 
-  const filtered = useMemo(() => vehicles
-    .filter(v => filterStatus === 'Tümü' ? v.status !== 'Satıldı' : v.status === filterStatus)
-    .filter(v => !searchTerm || `${v.brand} ${v.series}`.toLowerCase().includes(searchTerm.toLowerCase())),
-    [vehicles, filterStatus, searchTerm]);
+  const filtered = useMemo(() => {
+    return vehicles
+      .filter(v => filterStatus === 'Tümü' ? v.status !== 'Satıldı' : v.status === filterStatus)
+      .filter(v => !searchTerm || `${v.brand} ${v.series}`.toLowerCase().includes(searchTerm.toLowerCase()))
+      .sort((a, b) => {
+        // Öncelik 1: Excel'deki özel (order) sıralamasına göre. 
+        if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
+        if (a.order !== undefined) return -1;
+        if (b.order !== undefined) return 1;
+        
+        // Düzenlenmemiş veya sonradan eklenmiş yeni araçlar olursa fiyata göre veya createdAt tarihine göre insin
+        const pA = a.salePrice || a.purchasePrice || 0;
+        const pB = b.salePrice || b.purchasePrice || 0;
+        return pB - pA;
+      });
+  }, [vehicles, filterStatus, searchTerm]);
 
   // ── Auth ───────────────────────────────────────────────────────────────────
   const handleLogin = (e: React.FormEvent) => {
@@ -119,15 +164,17 @@ export default function App() {
   };
 
   // ── Vehicle CRUD ───────────────────────────────────────────────────────────
-  const openAdd = () => { setEditId(null); setForm({ ...EMPTY_VEHICLE }); setImgFile(null); setImgPreview(''); setExpFile(null); setExpPreview(''); setShowModal(true); };
+  const openAdd = () => { setEditId(null); setForm({ ...EMPTY_VEHICLE }); setImgFile(null); setImgPreview(''); setExpFile(null); setExpPreview(''); setPurchaseDocFile(null); setPurchaseDocPreview(''); setSaleDocFile(null); setSaleDocPreview(''); setRentalDocFile(null); setRentalDocPreview(''); setSaleContractDocFile(null); setSaleContractDocPreview(''); setShowModal(true); };
   const openEdit = (v: Vehicle) => {
     setEditId(v.id!);
     setForm({
       brand: v.brand, series: v.series, year: `${v.year}`, km: `${v.km}`,
+      fuel: v.fuel || '', gear: v.gear || '',
       color: v.color || '', plate: v.plate || '', inspection: v.inspection || '',
       purchasePrice: `${v.purchasePrice}`, expenses: `${v.expenses}`,
+      expenseNotes: v.expenseNotes || '',
       salePrice: `${v.salePrice}`, notes: v.notes || '',
-      expertiseNotes: v.expertiseNotes || '', status: v.status,
+      expertiseNotes: v.expertiseNotes || '', tramerAmount: v.tramerAmount ? String(v.tramerAmount) : '0', status: v.status,
       purchaseDate: v.purchaseDate || '', soldDate: v.soldDate || '',
       sellerName: v.sellerName || '', sellerPhone: v.sellerPhone || '',
       sellerIdNo: v.sellerIdNo || '', sellerAddress: v.sellerAddress || '',
@@ -142,10 +189,20 @@ export default function App() {
       renterPhone: v.renterPhone || '',
       rentalStart: v.rentalStart || '',
       rentalEnd: v.rentalEnd || '',
+      rentalPeriod: v.rentalPeriod || '',
       dailyPrice: v.dailyPrice ? String(v.dailyPrice) : '',
+      rentalDebt: v.rentalDebt ? String(v.rentalDebt) : '',
+      rentalCollected: v.rentalCollected ? String(v.rentalCollected) : '',
+      rentalPaymentStatus: v.rentalPaymentStatus || '',
+      rentalInvoiceStatus: v.rentalInvoiceStatus || '',
+      purchaseDoc: v.purchaseDoc || '',
+      saleDoc: v.saleDoc || '',
+      rentalDoc: v.rentalDoc || '',
+      saleContractDoc: v.saleContractDoc || '',
     });
     setImgPreview(v.image || ''); setExpPreview(v.expertiseImage || '');
-    setImgFile(null); setExpFile(null); setShowModal(true);
+    setPurchaseDocPreview(v.purchaseDoc || ''); setSaleDocPreview(v.saleDoc || ''); setRentalDocPreview(v.rentalDoc || ''); setSaleContractDocPreview(v.saleContractDoc || '');
+    setImgFile(null); setExpFile(null); setPurchaseDocFile(null); setSaleDocFile(null); setRentalDocFile(null); setSaleContractDocFile(null); setShowModal(true);
   };
 
   const openCari = (v: Vehicle) => {
@@ -158,21 +215,38 @@ export default function App() {
     try {
       let imageUrl = imgPreview;
       let expertiseUrl = expPreview;
+      let purchaseDocUrl = purchaseDocPreview;
+      let saleDocUrl = saleDocPreview;
+      let rentalDocUrl = rentalDocPreview;
+      let saleContractDocUrl = saleContractDocPreview;
       if (imgFile) imageUrl = await uploadImage(imgFile, `ertas/vehicles/${Date.now()}_${imgFile.name}`);
       if (expFile) expertiseUrl = await uploadImage(expFile, `ertas/expertise/${Date.now()}_${expFile.name}`);
+      if (purchaseDocFile) purchaseDocUrl = await uploadImage(purchaseDocFile, `ertas/docs/purchase_${Date.now()}_${purchaseDocFile.name}`);
+      if (saleDocFile) saleDocUrl = await uploadImage(saleDocFile, `ertas/docs/sale_${Date.now()}_${saleDocFile.name}`);
+      if (rentalDocFile) rentalDocUrl = await uploadImage(rentalDocFile, `ertas/docs/rental_${Date.now()}_${rentalDocFile.name}`);
+      if (rentalDocFile) rentalDocUrl = await uploadImage(rentalDocFile, `ertas/docs/rental_${Date.now()}_${rentalDocFile.name}`);
+      if (saleContractDocFile) saleContractDocUrl = await uploadImage(saleContractDocFile, `ertas/docs/sale_contract_${Date.now()}_${saleContractDocFile.name}`);
+
+      const parseTR = (val: any) => {
+        if (!val) return 0;
+        if (typeof val === 'number') return val;
+        return parseFloat(String(val).replace(/\./g, '').replace(/,/g, '.')) || 0;
+      };
 
       const data: Omit<Vehicle, 'id'> = {
         brand: form.brand, series: form.series, model: form.series,
-        year: parseInt(form.year) || 0, km: parseInt(form.km) || 0,
-        fuel: 'Benzin', gear: 'Otomatik',
+        year: parseInt(form.year) || 0, km: parseTR(form.km),
+        fuel: (form as any).fuel || '', gear: (form as any).gear || '',
         color: (form as any).color || '',
         plate: (form as any).plate || '',
         inspection: (form as any).inspection || '',
-        purchasePrice: parseFloat(form.purchasePrice) || 0,
-        expenses: parseFloat(form.expenses) || 0,
-        salePrice: parseFloat(form.salePrice) || parseFloat(form.purchasePrice) * 1.15 || 0,
+        purchasePrice: parseTR(form.purchasePrice),
+        expenses: parseTR(form.expenses),
+        expenseNotes: (form as any).expenseNotes || '',
+        salePrice: parseTR(form.salePrice) || parseTR(form.purchasePrice) * 1.15 || 0,
         status: form.status, notes: form.notes,
         expertiseNotes: (form as any).expertiseNotes || '',
+        tramerAmount: parseTR((form as any).tramerAmount),
         image: imageUrl, expertiseImage: expertiseUrl,
         purchaseDate: (form as any).purchaseDate || '',
         soldDate: (form as any).soldDate || '',
@@ -193,7 +267,16 @@ export default function App() {
         renterPhone: (form as any).renterPhone || '',
         rentalStart: (form as any).rentalStart || '',
         rentalEnd: (form as any).rentalEnd || '',
-        dailyPrice: parseFloat((form as any).dailyPrice) || 0,
+        rentalPeriod: (form as any).rentalPeriod || '',
+        dailyPrice: parseTR((form as any).dailyPrice),
+        rentalDebt: parseTR((form as any).rentalDebt),
+        rentalCollected: parseTR((form as any).rentalCollected),
+        rentalPaymentStatus: (form as any).rentalPaymentStatus || '',
+        rentalInvoiceStatus: (form as any).rentalInvoiceStatus || '',
+        purchaseDoc: purchaseDocUrl,
+        saleDoc: saleDocUrl,
+        rentalDoc: rentalDocUrl,
+        saleContractDoc: saleContractDocUrl,
       };
 
       if (editId) await updateVehicle(editId, data);
@@ -209,18 +292,36 @@ export default function App() {
 
 
   const exportCSV = () => {
-    const rows = [['Marka', 'Model', 'Yıl', 'KM', 'Alış', 'Masraf', 'Satış', 'Durum', 'Kâr']];
-    vehicles.forEach(v => rows.push([v.brand, v.series, `${v.year}`, `${v.km}`, `${v.purchasePrice}`, `${v.expenses}`, `${v.salePrice}`, v.status, `${(v.salePrice || 0) - (v.purchasePrice || 0) - (v.expenses || 0)}`]));
+    const rows = [['NO', 'Marka', 'Model', 'Yıl', 'Plaka', 'KM', 'Alış', 'Masraf', 'Maliyet', 'Satış', 'Durum', 'Kâr', 'Kira Durumu']];
+    const exportData = vehicles.filter(v => v.status !== 'Satıldı').sort((a,b) => (b.salePrice || b.purchasePrice || 0) - (a.salePrice || a.purchasePrice || 0));
+    exportData.forEach((v, i) => {
+      const maliyet = (v.purchasePrice || 0) + (v.expenses || 0);
+      rows.push([
+        `${i + 1}`,
+        v.brand || '', v.series || '', `${v.year || ''}`, v.plate || '', `${v.km || ''}`, 
+        `${v.purchasePrice || 0}`, `${v.expenses || 0}`, `${maliyet}`, `${v.salePrice || 0}`, 
+        v.status || '', `${(v.salePrice || 0) - maliyet}`, v.rentalPaymentStatus || ''
+      ]);
+    });
     const csv = rows.map(r => r.join(';')).join('\n');
     const a = document.createElement('a'); a.href = `data:text/csv;charset=utf-8,\uFEFF${encodeURIComponent(csv)}`;
-    a.download = 'ertas-araclar.csv'; a.click();
+    a.download = `ertas-stok-dosyasi-${new Date().toISOString().slice(0,10)}.csv`; a.click();
   };
 
   // ── Stoktaki araçlar (PDF ve Yazdır için orkestrasyon) ──
-  const stokAraclar = useMemo(() => vehicles
-    .filter(v => v.status !== 'Satıldı')
-    .sort((a, b) => (a.brand || '').localeCompare(b.brand || '') || (a.series || '').localeCompare(b.series || '')),
-    [vehicles]);
+  const stokAraclar = useMemo(() => {
+    return vehicles
+      .filter(v => ['Stokta', 'Rezerve', 'Kirada', 'Kiralık', 'Serviste'].includes(v.status) || v.status !== 'Satıldı')
+      .sort((a, b) => {
+        if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
+        if (a.order !== undefined) return -1;
+        if (b.order !== undefined) return 1;
+
+        const pA = a.salePrice || a.purchasePrice || 0;
+        const pB = b.salePrice || b.purchasePrice || 0;
+        return pB - pA;
+      });
+  }, [vehicles]);
 
   const exportPDF = () => {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
@@ -356,175 +457,160 @@ export default function App() {
     w.document.close();
   };
 
-  // ── Reklam Çıktısı (Araç Camına Yapıştırılan A4 Kartlar) ──
+  // ── Göğüs Ekspertiz Tanıtım Çıktısı (A4 Araç İçi Kart) ──
   const printAdCards = () => {
-    const w = window.open('', '_blank', 'width=800,height=1100');
+    const w = window.open('', '_blank', 'width=1000,height=1100');
     if (!w) return;
     const fmtN = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
+    const stokAraclar = vehicles.filter(v => v.status === 'Stokta');
     const cardsHtml = stokAraclar.map(v => `
       <div class="card">
-        <div class="header" style="display:flex; justify-content:space-between; margin-bottom: 15px;">
-          <div>
-            <div style="display:flex;">
-              <div style="background:#cc0000; color:white; padding:10px 20px; font-weight:bold; font-size:32px; letter-spacing:1px;">ERTAŞ</div>
-              <div style="background:#0a192f; color:white; padding:10px 20px; font-weight:bold; font-size:32px; letter-spacing:1px; width:300px;">OTOMOTİV</div>
+        <div class="card-inner">
+          
+          <!-- Üst Başlık (Firma Logosu ve Adı) -->
+          <div class="header">
+            <div class="logo-box">
+              <span class="brand-name">ERTAŞ</span>
+              <span class="sub-name">OTOMOTİV</span>
             </div>
-            <div style="background:#ffe600; color:black; padding:10px 20px; font-weight:900; font-size:46px; border-radius:15px; margin-top:10px; width: 500px; text-align:center;">
-              YALINIZLAR FİLO
+            <div class="filo-name">YALINIZLAR FİLO</div>
+          </div>
+
+          <!-- Araç Ana Başlığı -->
+          <div class="title-section">
+            <h1 class="vehicle-brand">${v.brand || 'MARKA GİRİLMEDİ'}</h1>
+            <h2 class="vehicle-series">${v.series || ''}</h2>
+          </div>
+
+          <!-- Araç Temel Özellikleri -->
+          <div class="specs-grid">
+            <div class="spec-item">
+              <span class="spec-label">MODEL YILI</span>
+              <span class="spec-value">${v.year || '-'}</span>
+            </div>
+            <div class="spec-item">
+              <span class="spec-label">KİLOMETRE</span>
+              <span class="spec-value">${v.km ? fmtN(v.km) + ' KM' : '-'}</span>
+            </div>
+            <div class="spec-item">
+              <span class="spec-label">YAKIT</span>
+              <span class="spec-value">${v.fuel || '-'}</span>
+            </div>
+            <div class="spec-item">
+              <span class="spec-label">VİTES</span>
+              <span class="spec-value">${v.gear || '-'}</span>
+            </div>
+            <div class="spec-item">
+              <span class="spec-label">PLAKA</span>
+              <span class="spec-value tag-style">${v.plate || '-'}</span>
             </div>
           </div>
-          <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end;">
-            <div style="background:#cc0000; color:white; font-size:12px; font-weight:bold; padding:8px 12px; text-align:center;">
-              FİYAT BİLGİSİ İÇİN LÜTFEN<br>KAREKODU OKUTUNUZ !
-            </div>
-            <div style="margin-top:10px; border: 2px solid #ccc; padding:4px;">
-              <img src="https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=https://ertas-filo.web.app" width="110" height="110" />
+
+          <!-- Ekspertiz Durumu -->
+          <div class="expertise-section">
+            <div class="section-title">EKSPERTİZ DURUMU</div>
+            <div class="expertise-content">
+              <div class="expertise-image-area">
+                ${v.expertiseImage 
+                  ? `<img src="${v.expertiseImage}" alt="Ekspertiz Görseli" />` 
+                  : `<div class="no-image">Ekspertiz Şeması Belirtilmemiş</div>`
+                }
+              </div>
+              <div class="expertise-details">
+                <div class="detail-box">
+                  <div class="detail-label">TRAMER (HASAR) KAYDI</div>
+                  <div class="detail-value tramer-value">
+                    ${v.tramerAmount ? fmtN(Number(v.tramerAmount)) + ' TL' : (v.expertiseNotes?.toLowerCase().includes('yok') ? 'YOKTUR' : 'YOKTUR')}
+                  </div>
+                </div>
+                <div class="detail-box">
+                  <div class="detail-label">MUAYENE GEÇERLİLİK</div>
+                  <div class="detail-value">${v.inspection || '-'}</div>
+                </div>
+                <div class="detail-box full-width">
+                  <div class="detail-label">EKSPERTİZ ÖZETİ & NOTLAR</div>
+                  <div class="detail-value notes-value">
+                    ${v.expertiseNotes || 'Boya, değişen bulunmamaktadır. Araç orijinalliğini korumaktadır.'}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
+
+          <!-- Garanti Banner -->
+          <div class="warranty-banner">
+            <div class="warranty-item">🛡️ EKSPERTİZ GARANTİSİ</div>
+            <div class="divider"></div>
+            <div class="warranty-item">💯 ORİJİNAL KM</div>
+            <div class="divider"></div>
+            <div class="warranty-item">🤝 GERİ ALIM GARANTİSİ</div>
+            <div class="divider"></div>
+            <div class="warranty-item">💳 ANINDA KREDİ</div>
+          </div>
+
         </div>
-
-        <div style="border: 8px solid black; padding: 6px; border-radius: 2px;">
-          <div style="border: 12px solid #ffe600; padding: 15px; background: white;">
-             
-            <div style="display:flex; background-color:white; border: 2px solid #ccc; border-radius:20px; padding: 12px 20px; margin-bottom:12px; font-size: 26px; font-weight:bold; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-              <span style="font-size:12px; color:#555; align-self:center; margin-right:20px; min-width:80px; letter-spacing:1px;">MARKA:</span>
-              <span>${v.brand || '-'}</span>
-            </div>
-
-            <div style="display:flex; background-color:white; border: 2px solid #ccc; border-radius:20px; padding: 12px 20px; margin-bottom:12px; font-size: 26px; font-weight:bold; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-              <span style="font-size:12px; color:#555; align-self:center; margin-right:20px; min-width:80px; letter-spacing:1px;">MODEL:</span>
-              <span>${v.series || '-'}</span>
-            </div>
-
-            <div style="display:flex; gap:15px; margin-bottom:12px;">
-              <div style="flex:1; display:flex; background-color:white; border: 2px solid #ccc; border-radius:20px; padding: 12px 20px; font-size: 26px; font-weight:bold; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-                <span style="font-size:10px; color:#555; align-self:center; margin-right:10px; font-weight:normal;">MODEL<br>YILI:</span>
-                <span style="align-self:center; margin-left:10px;">${v.year || '-'}</span>
-              </div>
-              <div style="flex:1; display:flex; background-color:white; border: 2px solid #ccc; border-radius:20px; padding: 12px 20px; font-size: 26px; font-weight:bold; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-                <span style="font-size:12px; color:#555; align-self:center; margin-right:20px;">KM:</span>
-                <span style="align-self:center;">${v.km ? fmtN(v.km) + ' KM' : '-'}</span>
-              </div>
-            </div>
-
-            <div style="display:flex; gap:15px; margin-bottom:12px;">
-              <div style="flex:1; display:flex; background-color:white; border: 2px solid #ccc; border-radius:20px; padding: 12px 20px; font-size: 26px; font-weight:bold; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-                <span style="font-size:12px; color:#555; align-self:center; margin-right:10px; width:50px;">YAKIT:</span>
-                <span style="align-self:center;">${v.fuel || '-'}</span>
-              </div>
-              <div style="flex:1; display:flex; background-color:white; border: 2px solid #ccc; border-radius:20px; padding: 12px 20px; font-size: 24px; font-weight:bold; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-                <span style="font-size:12px; color:#555; align-self:center; margin-right:20px;">VİTES:</span>
-                <span style="align-self:center;">${v.gear || '-'}</span>
-              </div>
-            </div>
-
-            <div style="display:flex; gap:15px; margin-bottom:12px;">
-              <div style="flex:1; display:flex; background-color:white; border: 2px solid #ccc; border-radius:20px; padding: 12px 20px; font-size: 26px; font-weight:bold; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-                <span style="font-size:12px; color:#555; align-self:center; margin-right:10px; width:50px;">PLAKA:</span>
-                <span style="align-self:center;">${v.plate || '-'}</span>
-              </div>
-              <div style="flex:1; display:flex; background-color:white; border: 2px solid #ccc; border-radius:20px; padding: 12px 20px; font-size: 16px; font-weight:bold; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-                <span style="font-size:10px; color:#555; align-self:center; margin-right:10px;">MOTOR NO:<br>ŞASİ NO:</span>
-                <span style="align-self:center;">-</span>
-              </div>
-            </div>
-
-            <div style="display:flex; gap:15px; margin-top: 15px;">
-              <div style="flex:1; display:flex; align-items:center; padding: 0 10px;">
-                <span style="font-size:12px; color:black; font-weight:bold; margin-right:15px; letter-spacing:1px;">HASAR KAYDI<br>(NİTELİĞİ):</span>
-                <span style="font-size: 14px; font-weight:bold;">${v.expertiseNotes ? (v.expertiseNotes.toLowerCase().includes('yok') ? 'YOKTUR' : 'VAR') : 'YOKTUR'}</span>
-              </div>
-              <div style="flex:1; display:flex; align-items:center; padding: 0 10px; justify-content: flex-end;">
-                <span style="font-size:12px; color:black; font-weight:bold; margin-right:15px; letter-spacing:1px;">MUAYENE:</span>
-                <span style="font-size: 14px; font-weight:bold;">${v.inspection || '-'}</span>
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        <div style="background:#90bae3; color:black; font-weight:bold; font-size:24px; margin-top:10px; padding:5px 15px; border:2px solid black; width:150px; text-align:center;">
-          EXPERTİZ
-        </div>
-
-        <div style="display:flex; border:3px solid black; margin-top:5px; height: 320px;">
-          <div style="flex:1; border-right:1px solid #ccc; padding:10px; display:flex; align-items:center; justify-content:center;">
-             ${v.expertiseImage ? `<img src="${v.expertiseImage}" style="width:100%; height:100%; object-fit:contain;" />` : `<div style="color:#aaa; font-style:italic; font-size:14px;">Ekspertiz görseli yüklenmemiş.</div>`}
-          </div>
-          <div style="flex:1; padding:15px; display:flex; flex-direction:column;">
-             <div style="display:flex; align-items:center; margin-bottom:15px;">
-               <div style="background:#0a192f; color:white; font-size:20px; font-weight:900; padding:10px 15px; text-transform:uppercase; letter-spacing:1px;">${v.brand}</div>
-               <div style="padding-left:15px; font-size:14px; color:#333;">${v.series || '-'}</div>
-             </div>
-             
-             <div style="font-size:16px; color:#0c4a6e; font-weight:600; margin-bottom:10px;">Genel Bakış</div>
-             <table style="width:100%; font-size:12px; border-collapse:collapse; color:#333;">
-               <tr style="border-top:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0;">
-                 <td style="padding:8px 0; font-weight:bold;">Model Üretim Yılı</td>
-                 <td style="text-align:right;">${v.year || '-'}</td>
-               </tr>
-               <tr style="border-bottom:1px solid #e2e8f0;">
-                 <td style="padding:8px 0; font-weight:bold;">Motor Tipi</td>
-                 <td style="text-align:right;">${v.fuel || '-'}</td>
-               </tr>
-               <tr style="border-bottom:1px solid #e2e8f0;">
-                 <td style="padding:8px 0; font-weight:bold;">Şanzıman</td>
-                 <td style="text-align:right;">${v.gear || '-'}</td>
-               </tr>
-             </table>
-             <div style="font-size:14px; font-weight:bold; margin-top:20px; color:#cc0000; text-align:center;">EKSPERTİZ ÖZETİ</div>
-             <div style="font-size:11px; margin-top:10px; color:#333; height:90px; overflow:hidden; text-align:center;">
-               ${v.expertiseNotes || 'Boya, değişen bulunmamaktadır. Araç tamamen orijinaldir.'}
-             </div>
-          </div>
-        </div>
-
-        <div style="display:flex; justify-content:space-between; margin-top:15px; gap:8px;">
-          <!-- Using inline SVG icons embedded for perfect replication -->
-          <div style="background:#0a417a; color:white; flex:1; height: 90px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-size:11px; padding: 5px;">
-            <div style="font-size:24px; margin-bottom:5px;">📋</div>
-            EKSPERTİZ<br>GARANTİSİ
-          </div>
-          <div style="background:#0a417a; color:white; flex:1; height: 90px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-size:11px; padding: 5px;">
-            <div style="font-size:24px; margin-bottom:5px;">🏅</div>
-            ORJİNAL KM<br>GARANTİSİ
-          </div>
-          <div style="background:#0a417a; color:white; flex:1; height: 90px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-size:11px; padding: 5px;">
-            <div style="font-size:24px; margin-bottom:5px;">🤝</div>
-            GERİ ALIM<br>GARANTİSİ
-          </div>
-          <div style="background:#0a417a; color:white; flex:1; height: 90px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-size:10px; padding: 2px;">
-            <div style="font-size:24px; margin-bottom:5px;">💵</div>
-            NAKİT / TAKAS<br>ALIM
-          </div>
-          <div style="background:#0a417a; color:white; flex:1; height: 90px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-size:11px; padding: 5px;">
-            <div style="font-size:24px; margin-bottom:5px;">⏱️</div>
-            ANINDA<br>KREDİ
-          </div>
-          <div style="background:#0a417a; color:white; flex:1; height: 90px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-size:10px; padding: 2px;">
-            <div style="font-size:24px; margin-bottom:5px;">💳</div>
-            KREDİ KARTINA<br>TAKSİT
-          </div>
-        </div>
-
       </div>
     `).join('');
 
-    w.document.write(`<!DOCTYPE html><html><head><title>ERTAŞ - Araç Reklam Kartları (A4)</title>
+    w.document.write(`<!DOCTYPE html><html><head><title>ERTAŞ - Göğüs Tanıtım Kartları</title>
     <style>
+      @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap');
+      
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #e2e8f0; }
+      body { font-family: 'Montserrat', sans-serif; background: #cbd5e1; }
+      
       @media print {
-        body { background: white; }
+        body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .no-print { display: none !important; }
-        .card { page-break-after: always; box-shadow: none !important; margin: 0 !important; width: 100% !important; min-height: 100vh !important; }
+        .card { page-break-after: always; box-shadow: none !important; margin: 0 !important; width: 100% !important; height: 100vh !important; }
         .card:last-child { page-break-after: auto; }
-        @page { size: A4 portrait; margin: 10mm; }
+        @page { size: A4 portrait; margin: 0; }
       }
+      
       @media screen {
-        body { padding: 20px; }
-        .card { width: 210mm; min-height: 297mm; margin: 20px auto; background: white; padding: 15mm; box-shadow: 0 8px 40px rgba(0,0,0,0.15); }
+        body { padding: 40px; }
+        .card { width: 210mm; min-height: 297mm; margin: 0 auto 40px; background: white; box-shadow: 0 20px 60px rgba(0,0,0,0.15); border-radius: 8px; overflow: hidden; }
       }
+
+      .card-inner { padding: 40px; display: flex; flex-direction: column; height: 100%; border: 15px solid #0a192f; m-border: 10px; }
+      
+      .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid #cc0000; padding-bottom: 20px; margin-bottom: 30px; }
+      .logo-box { display: flex; align-items: stretch; height: 60px; }
+      .brand-name { background: #cc0000; color: white; font-weight: 900; font-size: 38px; padding: 0 20px; display: flex; align-items: center; }
+      .sub-name { background: #0a192f; color: white; font-weight: 900; font-size: 38px; padding: 0 20px; display: flex; align-items: center; }
+      .filo-name { font-weight: 900; font-size: 32px; color: #0a192f; padding: 10px 20px; border: 3px solid #0a192f; border-radius: 12px; }
+
+      .title-section { text-align: center; margin-bottom: 30px; background: #f8fafc; padding: 30px; border-radius: 16px; border: 1px solid #e2e8f0; }
+      .vehicle-brand { font-size: 56px; font-weight: 900; color: #0a192f; text-transform: uppercase; letter-spacing: -1px; line-height: 1; margin-bottom: 10px; }
+      .vehicle-series { font-size: 28px; font-weight: 700; color: #64748b; }
+
+      .specs-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 30px; }
+      .spec-item { background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; }
+      .spec-item:last-child { grid-column: span 2; }
+      .spec-label { font-size: 14px; font-weight: 700; color: #94a3b8; letter-spacing: 1px; }
+      .spec-value { font-size: 24px; font-weight: 900; color: #0a192f; }
+      .tag-style { background: #0a192f; color: white; padding: 5px 15px; border-radius: 8px; font-size: 28px; letter-spacing: 2px; }
+
+      .expertise-section { flex-grow: 1; border: 3px solid #0a192f; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; }
+      .section-title { background: #0a192f; color: white; text-align: center; font-weight: 900; font-size: 24px; padding: 15px; letter-spacing: 2px; }
+      .expertise-content { display: flex; flex-direction: column; padding: 20px; flex-grow: 1; gap: 20px; }
+      
+      .expertise-image-area { flex-grow: 1; min-height: 250px; flex-shrink: 0; border: 2px dashed #cbd5e1; border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 10px; background: #f8fafc; }
+      .expertise-image-area img { width: 100%; height: 100%; object-fit: contain; }
+      .no-image { color: #94a3b8; font-weight: 700; font-size: 18px; }
+
+      .expertise-details { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+      .detail-box { background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 15px; text-align: center; }
+      .detail-box.full-width { grid-column: span 2; background: #fff1f2; border-color: #fecdd3; }
+      .detail-label { font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 5px; letter-spacing: 1px; }
+      .detail-value { font-size: 18px; font-weight: 900; color: #0a192f; }
+      .tramer-value { color: #e11d48; font-size: 24px; }
+      .notes-value { color: #881337; font-size: 16px; font-weight: 700; }
+
+      .warranty-banner { margin-top: 30px; background: #0a192f; border-radius: 12px; padding: 20px; display: flex; justify-content: space-around; align-items: center; color: white; }
+      .warranty-item { font-weight: 700; font-size: 14px; letter-spacing: 1px; }
+      .divider { width: 2px; height: 20px; background: rgba(255,255,255,0.2); }
+
       .print-btn {
         position: fixed; top: 20px; right: 20px; z-index: 100;
         background: linear-gradient(135deg, #059669, #047857); color: white; border: none;
@@ -555,6 +641,8 @@ export default function App() {
     { id: 'hgs', icon: AlertTriangle, label: 'HGS Sorgulama' },
     { id: 'partners', icon: Briefcase, label: 'Ortaklar' },
     { id: 'crm', icon: Users, label: 'Müşteri (CRM)' },
+    { id: 'tarama', icon: Search, label: 'Araç Tarama' },
+    { id: 'bot', icon: Bot, label: 'Araç Bot' },
     { id: 'settings', icon: Settings, label: 'Ayarlar' },
   ];
 
@@ -633,7 +721,7 @@ export default function App() {
         <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
 
           {/* ── DASHBOARD ── */}
-          {activeTab === 'dashboard' && <DashboardTab vehicles={vehicles} partners={partners} expenses={expenses} loading={loading} onEditVehicle={openEdit} />}
+          {activeTab === 'dashboard' && <DashboardTab vehicles={vehicles} partners={partners} expenses={expenses} incomes={combinedIncomes} loading={loading} onEditVehicle={openEdit} />}
 
           {/* ── INVENTORY ── */}
           {activeTab === 'inventory' && (
@@ -657,13 +745,16 @@ export default function App() {
                 <div className="overflow-x-auto rounded-2xl border border-slate-800">
                   <table className="w-full text-left min-w-[700px]">
                     <thead className="bg-slate-800/50 text-slate-400 text-xs uppercase tracking-wider">
-                      <tr>{['Araç', 'Plaka', 'Yıl', 'Giriş Tarihi', 'Sigorta Bitiş', 'Alış', 'Masraf', 'Satış', 'Kâr', 'Durum', ''].map(h => <th key={h} className="px-3 py-3 font-semibold">{h}</th>)}</tr>
+                      <tr>{['NO', 'Araç', 'Plaka', 'Yıl', 'Giriş Tarihi', 'Sigorta Bitiş', 'Alış', 'Masraf', 'Maliyet', ...(filterStatus === 'Satıldı' ? ['Satış', 'Kâr'] : []), 'Durum', ''].map(h => <th key={h} className="px-3 py-3 font-semibold">{h}</th>)}</tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800">
-                      {filtered.map(v => {
+                      {filtered.map((v, idx) => {
                         const profit = (v.salePrice || 0) - (v.purchasePrice || 0) - (v.expenses || 0);
                         return (
                           <tr key={v.id} className="hover:bg-slate-800/30 transition-colors group">
+                            <td className="px-3 py-3 text-center">
+                              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 font-black text-xs">{idx + 1}</span>
+                            </td>
                             <td className="px-3 py-3">
                               <div className="flex items-center gap-3">
                                 <img src={v.image || 'https://images.unsplash.com/photo-1560958089-b8a1929cea89?auto=format&fit=crop&q=80&w=100'} className="w-12 h-10 rounded-xl object-cover bg-slate-800 shrink-0" alt={v.brand} />
@@ -681,11 +772,27 @@ export default function App() {
                               {v.insuranceEnd ? new Date(v.insuranceEnd).toLocaleDateString('tr-TR') : '—'}
                             </td>
                             <td className="px-3 py-3 text-sm">{fmt(v.purchasePrice || 0)}</td>
-                            <td className="px-3 py-3 text-sm text-red-400">-{fmt(v.expenses || 0)}</td>
-                            <td className="px-3 py-3 text-sm font-bold text-blue-400">{fmt(v.salePrice || 0)}</td>
-                            <td className={`px-3 py-3 text-sm font-bold ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(profit)}</td>
+                            <td className="px-3 py-3 text-sm text-red-400">{fmt(v.expenses || 0)}</td>
+                            <td className="px-3 py-3 text-sm font-bold text-amber-400">{fmt((v.purchasePrice || 0) + (v.expenses || 0))}</td>
+                            {filterStatus === 'Satıldı' && (
+                              <>
+                                <td className="px-3 py-3 text-sm font-bold text-blue-400">{fmt(v.salePrice || 0)}</td>
+                                <td className={`px-3 py-3 text-sm font-bold ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(profit)}</td>
+                              </>
+                            )}
                             <td className="px-3 py-3">
-                              <select value={v.status} onChange={e => updateVehicle(v.id!, { status: e.target.value as Vehicle['status'] })}
+                              <select value={v.status} onChange={e => {
+                                const yeniDurum = e.target.value as Vehicle['status'];
+                                if (yeniDurum === 'Satıldı') {
+                                  const satisFiyati = prompt(`${v.brand} ${v.series} satış fiyatını girin (₺):`);
+                                  if (satisFiyati === null) return;
+                                  const fiyat = parseFloat(satisFiyati);
+                                  if (isNaN(fiyat) || fiyat <= 0) { alert('Geçerli bir fiyat girin!'); return; }
+                                  updateVehicle(v.id!, { status: yeniDurum, salePrice: fiyat, soldDate: new Date().toISOString().slice(0, 10) });
+                                } else {
+                                  updateVehicle(v.id!, { status: yeniDurum });
+                                }
+                              }}
                                 className={`text-[10px] font-bold px-2 py-1 rounded-lg border bg-transparent cursor-pointer ${statusStyle[v.status]}`}>
                                 {STATUSES.map(s => <option key={s} value={s} className="bg-slate-900 text-white">{s}</option>)}
                               </select>
@@ -780,10 +887,7 @@ export default function App() {
                         <th className="px-3 py-3 font-bold w-10">R</th>
                         <th className="px-3 py-3 font-bold w-14">YIL</th>
                         <th className="px-3 py-3 font-bold">PLAKA</th>
-                        <th className="px-3 py-3 font-bold">ALIŞ ₺</th>
-                        <th className="px-3 py-3 font-bold">MASRAF ₺</th>
                         <th className="px-3 py-3 font-bold">SATIŞ FİYATI ₺</th>
-                        <th className="px-3 py-3 font-bold">KÂR ₺</th>
                         <th className="px-3 py-3 font-bold">KM</th>
                         <th className="px-3 py-3 font-bold">DURUM</th>
                         <th className="px-3 py-3 font-bold">EKSPERTİZ</th>
@@ -792,11 +896,11 @@ export default function App() {
                     </thead>
                     <tbody className="divide-y divide-slate-800">
                       {filtered.map((v, idx) => {
-                        const maliyet = (v.purchasePrice || 0) + (v.expenses || 0);
-                        const kar = (v.salePrice || 0) - maliyet;
                         return (
                         <tr key={v.id} className={`hover:bg-slate-800/40 transition-colors group ${idx % 2 === 0 ? 'bg-slate-900/30' : ''}`}>
-                          <td className="px-3 py-2.5 text-slate-500 font-mono text-xs">{idx + 1}</td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className="inline-flex items-center justify-center w-6 h-6 rounded bg-slate-800 border border-slate-700 text-slate-300 font-black text-[10px]">{idx + 1}</span>
+                          </td>
                           <td className="px-3 py-2.5">
                             <div className="font-bold text-xs leading-tight">{v.brand}</div>
                             <div className="text-slate-400 text-[10px]">{v.series}</div>
@@ -812,31 +916,54 @@ export default function App() {
                               {v.plate || '-'}
                             </span>
                           </td>
-                          <td className="px-3 py-2.5 text-xs text-slate-300 whitespace-nowrap">{fmt(v.purchasePrice || 0)}</td>
-                          <td className="px-3 py-2.5 text-xs text-red-400 whitespace-nowrap">{v.expenses ? `-${fmt(v.expenses)}` : '—'}</td>
                           <td className="px-3 py-2.5">
-                            <input
-                              type="number"
-                              defaultValue={v.salePrice || ''}
-                              placeholder="Fiyat gir..."
-                              onBlur={e => {
-                                const val = parseFloat(e.target.value);
-                                if (val && val !== v.salePrice) updateVehicle(v.id!, { salePrice: val });
-                              }}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                              }}
-                              className="w-28 bg-blue-500/10 border border-blue-500/30 rounded-lg px-2 py-1 text-xs font-bold text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all text-right"
-                            />
-                          </td>
-                          <td className={`px-3 py-2.5 text-xs font-bold whitespace-nowrap ${kar > 0 ? 'text-emerald-400' : kar < 0 ? 'text-red-400' : 'text-slate-500'}`}>
-                            {v.salePrice ? fmt(kar) : '—'}
+                            {(v.status === 'Kiralık' || v.status === 'Kirada') ? (
+                              <div className="text-right flex flex-col gap-0.5">
+                                {v.dailyPrice ? <div className="text-xs font-bold text-teal-400">{fmt(v.dailyPrice)} <span className="text-[9px] text-teal-500/70 font-normal">/ Kira</span></div> : <div className="text-[10px] text-slate-500">Ücret Girilmedi</div>}
+                                {v.rentalCollected ? <div className="text-[10px] font-bold text-emerald-400">+{fmt(v.rentalCollected)} <span className="text-[9px] text-emerald-500/70 font-normal">/ Tahsil</span></div> : null}
+                              </div>
+                            ) : (
+                              <input
+                                type="text"
+                                defaultValue={v.salePrice ? new Intl.NumberFormat('tr-TR').format(v.salePrice) + ' TL' : ''}
+                                placeholder="Fiyat gir..."
+                                onFocus={e => {
+                                  e.target.value = v.salePrice ? String(v.salePrice) : '';
+                                  e.target.type = 'number';
+                                }}
+                                onBlur={e => {
+                                  const val = parseFloat(e.target.value);
+                                  e.target.type = 'text';
+                                  if (val && val !== v.salePrice) {
+                                    updateVehicle(v.id!, { salePrice: val });
+                                    e.target.value = new Intl.NumberFormat('tr-TR').format(val) + ' TL';
+                                  } else {
+                                    e.target.value = v.salePrice ? new Intl.NumberFormat('tr-TR').format(v.salePrice) + ' TL' : '';
+                                  }
+                                }}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                }}
+                                className="w-32 bg-blue-500/10 border border-blue-500/30 rounded-lg px-2 py-1 text-xs font-bold text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all text-right"
+                              />
+                            )}
                           </td>
                           <td className="px-3 py-2.5 text-slate-300 text-xs whitespace-nowrap">
                             {v.km ? `${v.km.toLocaleString('tr-TR')}` : '-'}
                           </td>
                           <td className="px-3 py-2.5">
-                            <select value={v.status} onChange={e => updateVehicle(v.id!, { status: e.target.value as Vehicle['status'] })}
+                            <select value={v.status} onChange={e => {
+                              const yeniDurum = e.target.value as Vehicle['status'];
+                              if (yeniDurum === 'Satıldı') {
+                                const satisFiyati = prompt(`${v.brand} ${v.series} satış fiyatını girin (₺):`);
+                                if (satisFiyati === null) return;
+                                const fiyat = parseFloat(satisFiyati);
+                                if (isNaN(fiyat) || fiyat <= 0) { alert('Geçerli bir fiyat girin!'); return; }
+                                updateVehicle(v.id!, { status: yeniDurum, salePrice: fiyat, soldDate: new Date().toISOString().slice(0, 10) });
+                              } else {
+                                updateVehicle(v.id!, { status: yeniDurum });
+                              }
+                            }}
                               className={`text-[10px] font-bold px-2 py-1 rounded-lg border bg-transparent cursor-pointer ${statusStyle[v.status]}`}>
                               {STATUSES.map(s => <option key={s} value={s} className="bg-slate-900 text-white">{s}</option>)}
                             </select>
@@ -866,13 +993,22 @@ export default function App() {
           )}
 
           {/* ── FINANCE & EXPENSES ── */}
-          {activeTab === 'finance' && <FinanceTab expenses={expenses} addExpense={addExpense} removeExpense={removeExpense} incomes={incomes} addIncome={addIncome} removeIncome={removeIncome} grossProfit={stats.grossProfit} totalExpenses={stats.totalExpenses} totalIncomes={stats.totalIncomes} netProfit={stats.netProfit} />}
+          {activeTab === 'finance' && <FinanceTab expenses={expenses} addExpense={addExpense} removeExpense={removeExpense} incomes={combinedIncomes} addIncome={addIncome} removeIncome={customRemoveIncome} grossProfit={stats.grossProfit} totalExpenses={stats.totalExpenses} totalIncomes={stats.totalIncomes} netProfit={stats.netProfit} />}
 
           {/* ── PARTNERS ── */}
           {activeTab === 'partners' && <PartnersTab partners={partners} updateBalance={updateBalance} netProfit={stats.netProfit} />}
 
           {/* ── RENTAL ── */}
-          {activeTab === 'rental' && <RentalTab vehicles={vehicles} updateVehicle={updateVehicle} openEdit={openEdit} openCari={openCari} />}
+          {activeTab === 'rental' && <RentalTab vehicles={vehicles} updateVehicle={updateVehicle} openEdit={openEdit} openCari={openCari}
+            onTahsilat={async (vehicle, tutar) => {
+              await addIncome({
+                label: `Kira Geliri (${vehicle.plate || vehicle.brand})`,
+                amount: tutar,
+                category: 'Kira Geliri',
+                month: new Date().toISOString().slice(0, 7),
+              });
+            }}
+          />}
 
           {/* ── CRM ── */}
           {activeTab === 'crm' && <CrmTab customers={customers} addCustomer={addCustomer} updateCustomer={updateCustomer} removeCustomer={removeCustomer} />}
@@ -892,6 +1028,12 @@ export default function App() {
 
           {/* ── HGS ── */}
           {activeTab === 'hgs' && <HgsTab vehicles={vehicles} />}
+
+          {/* ── ARAÇ TARAMA ── */}
+          {activeTab === 'tarama' && <AracTaramaTab />}
+
+          {/* ── ARAÇ BOT ── */}
+          {activeTab === 'bot' && <BotTab />}
 
           {/* ── SETTINGS ── */}
           {activeTab === 'settings' && ((
@@ -929,12 +1071,12 @@ export default function App() {
               <h2 className="text-xl font-bold">{editId ? 'Aracı Düzenle' : 'Yeni Araç Ekle'}</h2>
               <button onClick={() => setShowModal(false)}><X size={20} /></button>
             </div>
-            {/* ── ARAÇ CARİ KART ÖZETİ (Satış yapıldıysa veya fiyat girildiyse) ── */}
+            {/* ── ARAÇ MALİYET ÖZETİ ── */}
             <div className="p-6 bg-slate-800/30 border-b border-slate-800">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider">💳 Araç Cari Kartı & Kâr Analizi</h3>
+                <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider">💳 Araç Maliyet Analizi</h3>
               </div>
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50">
                   <p className="text-[10px] uppercase text-slate-500 font-bold mb-1">Araç Alış Fiyatı</p>
                   <p className="text-xl font-bold text-slate-200">{fmt(Number((form as any).purchasePrice) || 0)}</p>
@@ -943,21 +1085,13 @@ export default function App() {
                   <p className="text-[10px] uppercase text-red-500/70 font-bold mb-1">Toplam Masraf</p>
                   <p className="text-xl font-bold text-red-400">+{fmt((Number((form as any).expenses) || 0))}</p>
                 </div>
-                <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50">
-                  <p className="text-[10px] uppercase text-blue-400/70 font-bold mb-1">Satış Fiyatı</p>
-                  <p className="text-xl font-bold text-blue-400">{fmt(Number((form as any).salePrice) || 0)}</p>
-                </div>
                 <div className="bg-emerald-500/5 p-4 rounded-2xl border border-emerald-500/20">
                   {(() => {
                     const maliyet = (Number((form as any).purchasePrice) || 0) + (Number((form as any).expenses) || 0);
-                    const satis = Number((form as any).salePrice) || 0;
-                    const kar = satis - maliyet;
                     return (
                       <>
-                        <p className={`text-[10px] uppercase font-bold mb-1 ${satis > 0 ? (kar >= 0 ? 'text-emerald-500/70' : 'text-red-500/70') : 'text-slate-500'}`}>Araç Başı Net Kâr</p>
-                        <p className={`text-2xl font-bold ${satis > 0 ? (kar >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-slate-500'}`}>
-                          {satis > 0 ? fmt(kar) : 'Satış Bekleniyor'}
-                        </p>
+                        <p className="text-[10px] uppercase font-bold mb-1 text-emerald-500/70">Toplam Maliyet</p>
+                        <p className="text-2xl font-bold text-emerald-400">{fmt(maliyet)}</p>
                       </>
                     );
                   })()}
@@ -971,12 +1105,56 @@ export default function App() {
                 { label: 'Seri / Model', key: 'series', type: 'text', placeholder: 'Hilux 4X2 Adventure' },
                 { label: 'Yıl', key: 'year', type: 'number', placeholder: '2022' },
                 { label: 'KM', key: 'km', type: 'number', placeholder: '172000' },
+              ].map(f => (
+                <div key={f.key} className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase">{f.label}</label>
+                  <input type={f.type} placeholder={f.placeholder} value={(form as any)[f.key]}
+                    onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/50" />
+                </div>
+              ))}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 uppercase">Yakıt Tipi</label>
+                <select value={(form as any).fuel || ''} onChange={e => setForm(prev => ({ ...prev, fuel: e.target.value }))}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/50">
+                  <option value="">Seçiniz...</option>
+                  {['Dizel', 'Benzin', 'Benzin & LPG', 'Hybrid', 'Elektrik'].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 uppercase">Vites Tipi</label>
+                <select value={(form as any).gear || ''} onChange={e => setForm(prev => ({ ...prev, gear: e.target.value }))}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/50">
+                  <option value="">Seçiniz...</option>
+                  {['Otomatik', 'Manuel', 'Yarı Otomatik'].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              {[
                 { label: 'Renk Kodu', key: 'color', type: 'text', placeholder: 'B / G / S / M' },
                 { label: 'Plaka', key: 'plate', type: 'text', placeholder: '09-AGR-986' },
                 { label: 'Muayene Tarihi', key: 'inspection', type: 'text', placeholder: '17.02.2027' },
                 { label: 'Alış Fiyatı (₺) *', key: 'purchasePrice', type: 'number', placeholder: '1200000' },
                 { label: 'Manuel Masraf (₺)', key: 'expenses', type: 'number', placeholder: '15000' },
-                { label: 'Satış Fiyatı (₺)', key: 'salePrice', type: 'number', placeholder: '1575000' },
+              ].map(f => (
+                <div key={f.key} className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase">{f.label}</label>
+                  <input type={f.type} placeholder={f.placeholder} value={(form as any)[f.key]}
+                    onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/50" />
+                </div>
+              ))}
+              {/* Masraf Açıklaması */}
+              <div className="col-span-2 space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 uppercase">Masraf Açıklaması</label>
+                <textarea
+                  value={(form as any).expenseNotes}
+                  onChange={e => setForm(prev => ({ ...prev, expenseNotes: e.target.value }))}
+                  placeholder="Boya, lastik, ekspertiz, yağ değişimi, tampon, cam filmi..."
+                  rows={2}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/50 resize-none"
+                />
+              </div>
+              {[
                 { label: 'Alış Tarihi', key: 'purchaseDate', type: 'date', placeholder: '' },
                 { label: 'Satış Tarihi', key: 'soldDate', type: 'date', placeholder: '' },
               ].map(f => (
@@ -987,6 +1165,7 @@ export default function App() {
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/50" />
                 </div>
               ))}
+
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-500 uppercase">Durum</label>
                 <select value={form.status} onChange={e => setForm(prev => ({ ...prev, status: e.target.value as Vehicle['status'] }))}
@@ -1068,8 +1247,11 @@ export default function App() {
                       { label: 'Kiralayan Kişi / Kurum', key: 'renterName', placeholder: 'Kiralayan Adı' },
                       { label: 'Telefon', key: 'renterPhone', placeholder: '05xx xxx xx xx' },
                       { label: 'Kira Başlangıç', key: 'rentalStart', placeholder: 'Tarih', type: 'date' },
+                      { label: 'Süre (Ay)', key: 'rentalPeriod', placeholder: 'Örn: 1 Ay' },
                       { label: 'Kira Bitiş', key: 'rentalEnd', placeholder: 'Tarih', type: 'date' },
-                      { label: 'Günlük Ücret (₺)', key: 'dailyPrice', placeholder: '1500', type: 'number' },
+                      { label: 'Kira Ücreti (₺)', key: 'dailyPrice', placeholder: 'Örn: 30000 Veya 30.000', type: 'text' },
+                      { label: 'Tahsil Edilen (₺)', key: 'rentalCollected', placeholder: 'Örn: 5000', type: 'text' },
+                      { label: 'Kalan Bakiye / Borç (₺)', key: 'rentalDebt', placeholder: 'Örn: 25000', type: 'text' },
                     ] as {label:string;key:string;placeholder:string;type?:string}[]).map(f => (
                       <div key={f.key} className="space-y-1">
                         <label className="text-[10px] font-bold text-teal-500 uppercase">{f.label}</label>
@@ -1078,6 +1260,26 @@ export default function App() {
                           className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs focus:outline-none focus:ring-1 focus:ring-teal-500/50" />
                       </div>
                     ))}
+                    
+                    <div className="space-y-1">
+                       <label className="text-[10px] font-bold text-teal-500 uppercase">Tahsilat Durumu</label>
+                       <select value={(form as any).rentalPaymentStatus || ''} onChange={e => setForm(prev => ({ ...prev, rentalPaymentStatus: e.target.value }))}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs focus:outline-none focus:ring-1 focus:ring-teal-500/50">
+                          <option value="">Seçiniz...</option>
+                          <option value="Alındı">Alındı</option>
+                          <option value="Alınmadı">Alınmadı</option>
+                          <option value="Kısmi">Kısmi</option>
+                       </select>
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-[10px] font-bold text-teal-500 uppercase">Fatura Durumu</label>
+                       <select value={(form as any).rentalInvoiceStatus || ''} onChange={e => setForm(prev => ({ ...prev, rentalInvoiceStatus: e.target.value }))}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs focus:outline-none focus:ring-1 focus:ring-teal-500/50">
+                          <option value="">Seçiniz...</option>
+                          <option value="Kesildi">Kesildi</option>
+                          <option value="Kesilmedi">Kesilmedi</option>
+                       </select>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1093,6 +1295,13 @@ export default function App() {
                   onChange={e => setForm(prev => ({ ...prev, expertiseNotes: e.target.value }))}
                   className="w-full bg-emerald-500/5 border border-emerald-500/30 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600/50 text-emerald-300" />
               </div>
+              <div className="col-span-2 space-y-1.5">
+                <label className="text-xs font-bold text-orange-500 uppercase">Tramer Kayıt Tutarı (₺)</label>
+                <input type="number" placeholder="0" value={(form as any).tramerAmount || ''}
+                  onChange={e => setForm(prev => ({ ...prev, tramerAmount: e.target.value }))}
+                  className="w-full bg-orange-500/5 border border-orange-500/30 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-600/50 text-orange-300" />
+                <p className="text-[10px] text-slate-500">Veri girilmezse 0 TL olarak görünür</p>
+              </div>
 
               {/* Araç Hasar Haritası */}
               <div className="col-span-2">
@@ -1103,16 +1312,40 @@ export default function App() {
               </div>
 
               <div className="col-span-1" onClick={() => document.getElementById('img-upload')?.click()}>
-                <div className="border-2 border-dashed border-slate-700 rounded-2xl p-4 flex flex-col items-center justify-center text-slate-500 hover:border-blue-500 hover:text-blue-500 transition-all cursor-pointer h-32">
-                  {imgPreview ? <img src={imgPreview} className="h-full w-full object-cover rounded-xl" alt="" /> : <><Plus size={28} /><p className="text-xs mt-1">Araç Fotoğrafı</p></>}
+                <div className="border-2 border-dashed border-slate-700 rounded-2xl p-4 flex flex-col items-center justify-center text-slate-500 hover:border-blue-500 hover:text-blue-500 transition-all cursor-pointer h-32 relative overflow-hidden group">
+                  {imgPreview ? <img src={imgPreview} className="h-full w-full object-cover rounded-xl" alt="" /> : <><Plus size={28} /><p className="text-xs mt-1 text-center">Araç<br/>Fotoğrafı</p></>}
                 </div>
                 <input id="img-upload" type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) { setImgFile(f); setImgPreview(URL.createObjectURL(f)); } }} />
               </div>
               <div className="col-span-1" onClick={() => document.getElementById('exp-upload')?.click()}>
-                <div className="border-2 border-dashed border-slate-700 rounded-2xl p-4 flex flex-col items-center justify-center text-slate-500 hover:border-emerald-500 hover:text-emerald-500 transition-all cursor-pointer h-32">
-                  {expPreview ? <img src={expPreview} className="h-full w-full object-contain rounded-xl" alt="" /> : <><FileText size={28} /><p className="text-xs mt-1">Ekspertiz Raporu</p></>}
+                <div className="border-2 border-dashed border-slate-700 rounded-2xl p-4 flex flex-col items-center justify-center text-slate-500 hover:border-emerald-500 hover:text-emerald-500 transition-all cursor-pointer h-32 relative overflow-hidden group">
+                  {expPreview ? <img src={expPreview} className="h-full w-full object-contain rounded-xl bg-slate-800" alt="" /> : <><FileText size={28} /><p className="text-xs mt-1 text-center">Ekspertiz<br/>Raporu</p></>}
                 </div>
                 <input id="exp-upload" type="file" accept="image/*,application/pdf" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) { setExpFile(f); setExpPreview(URL.createObjectURL(f)); } }} />
+              </div>
+              <div className="col-span-1" onClick={() => document.getElementById('purchase-doc-upload')?.click()}>
+                <div className="border-2 border-dashed border-slate-700 rounded-2xl p-4 flex flex-col items-center justify-center text-slate-500 hover:border-amber-500 hover:text-amber-500 transition-all cursor-pointer h-32 relative overflow-hidden group">
+                  {purchaseDocPreview ? <img src={purchaseDocPreview} className="h-full w-full object-contain rounded-xl bg-slate-800" alt="" /> : <><Receipt size={28} /><p className="text-xs mt-1 text-center">Alış Evrağı<br/>(Noter vb.)</p></>}
+                </div>
+                <input id="purchase-doc-upload" type="file" accept="image/*,application/pdf" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) { setPurchaseDocFile(f); setPurchaseDocPreview(URL.createObjectURL(f)); } }} />
+              </div>
+              <div className="col-span-1" onClick={() => document.getElementById('sale-doc-upload')?.click()}>
+                <div className="border-2 border-dashed border-slate-700 rounded-2xl p-4 flex flex-col items-center justify-center text-slate-500 hover:border-purple-500 hover:text-purple-500 transition-all cursor-pointer h-32 relative overflow-hidden group">
+                  {saleDocPreview ? <img src={saleDocPreview} className="h-full w-full object-contain rounded-xl bg-slate-800" alt="" /> : <><Receipt size={28} /><p className="text-xs mt-1 text-center">Satış Evrağı<br/>(Fatura vb.)</p></>}
+                </div>
+                <input id="sale-doc-upload" type="file" accept="image/*,application/pdf" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) { setSaleDocFile(f); setSaleDocPreview(URL.createObjectURL(f)); } }} />
+              </div>
+              <div className="col-span-1" onClick={() => document.getElementById('rental-doc-upload')?.click()}>
+                <div className="border-2 border-dashed border-slate-700 rounded-2xl p-4 flex flex-col items-center justify-center text-slate-500 hover:border-teal-500 hover:text-teal-500 transition-all cursor-pointer h-32 relative overflow-hidden group">
+                  {rentalDocPreview ? <img src={rentalDocPreview} className="h-full w-full object-contain rounded-xl bg-slate-800" alt="" /> : <><Receipt size={28} /><p className="text-xs mt-1 text-center">Kira Sözleşmesi</p></>}
+                </div>
+                <input id="rental-doc-upload" type="file" accept="image/*,application/pdf" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) { setRentalDocFile(f); setRentalDocPreview(URL.createObjectURL(f)); } }} />
+              </div>
+              <div className="col-span-1" onClick={() => document.getElementById('sale-contract-doc-upload')?.click()}>
+                <div className="border-2 border-dashed border-slate-700 rounded-2xl p-4 flex flex-col items-center justify-center text-slate-500 hover:border-pink-500 hover:text-pink-500 transition-all cursor-pointer h-32 relative overflow-hidden group">
+                  {saleContractDocPreview ? <img src={saleContractDocPreview} className="h-full w-full object-contain rounded-xl bg-slate-800" alt="" /> : <><Receipt size={28} /><p className="text-xs mt-1 text-center">Araç Satış<br/>Sözleşmesi</p></>}
+                </div>
+                <input id="sale-contract-doc-upload" type="file" accept="image/*,application/pdf" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) { setSaleContractDocFile(f); setSaleContractDocPreview(URL.createObjectURL(f)); } }} />
               </div>
             </div>
 

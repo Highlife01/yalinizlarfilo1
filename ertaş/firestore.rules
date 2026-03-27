@@ -10,6 +10,7 @@ service cloud.firestore {
     }
     match /ertas_partners/{id} { allow read, write: if true; }
     match /ertas_expenses/{id} { allow read, write: if true; }
+    match /ertas_incomes/{id} { allow read, write: if true; }
     match /ertas_customers/{id} { allow read, write: if true; }
     match /ertas_rentals/{id} { allow read, write: if true; }
     match /ertas_kasa/{id} { allow read, write: if true; }
