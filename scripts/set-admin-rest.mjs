@@ -1,6 +1,6 @@
 // Firebase REST API ile admin kullanıcı rolü atama (POST / create)
-const EMAIL = 'cebrailkara@gmail.com';
-const PASSWORD = 'Ak010101';
+const EMAIL = 'tameryaliniz@hotmail.com';
+const PASSWORD = 'Tamer001!!';
 const API_KEY = 'AIzaSyD-5-dBYt0ZgAHGXKrq2MpYmnSltd17WrM';
 const PROJECT_ID = 'yalinizlarfilo';
 
@@ -24,7 +24,7 @@ async function main() {
   const fields = {
     email: { stringValue: EMAIL },
     role: { stringValue: 'admin' },
-    displayName: { stringValue: 'Cebrail Kara' },
+    displayName: { stringValue: 'Tamer Yalınız' },
     createdAt: { stringValue: new Date().toISOString() }
   };
 
@@ -49,7 +49,7 @@ async function main() {
     const patchRes = await fetch(docUrl + '?updateMask.fieldPaths=role&updateMask.fieldPaths=displayName', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-      body: JSON.stringify({ fields: { role: { stringValue: 'admin' }, displayName: { stringValue: 'Cebrail Kara' } } })
+      body: JSON.stringify({ fields: { role: { stringValue: 'admin' }, displayName: { stringValue: 'Tamer Yalınız' } } })
     });
     const patchData = await patchRes.json();
     if (!patchRes.ok) {

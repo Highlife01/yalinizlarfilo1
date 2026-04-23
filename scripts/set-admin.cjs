@@ -9,17 +9,17 @@ admin.initializeApp({
 const db = admin.firestore();
 
 async function main() {
-  const uid = 'sDZgKt4hxbVJzwuDKcdGEIjTIKU2';
+  const uid = 'QzwyNVumNnNco2fFCTw6S01vQQj1';
   
   console.log('🔑 Admin rolü atanıyor (Firebase Admin SDK)...');
   await db.doc(`users/${uid}`).set({
-    email: 'cebrailkara@gmail.com',
+    email: 'tameryaliniz@hotmail.com',
     role: 'admin',
-    displayName: 'Cebrail Kara',
+    displayName: 'Tamer Yalınız',
     createdAt: new Date().toISOString(),
   }, { merge: true });
   
-  console.log('✅ cebrailkara@gmail.com artık admin!');
+  console.log('✅ tameryaliniz@hotmail.com artık admin!');
   process.exit(0);
 }
 

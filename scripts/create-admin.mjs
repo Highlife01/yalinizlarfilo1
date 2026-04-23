@@ -15,7 +15,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const EMAIL = 'cebrailkara@gmail.com';
+const EMAIL = 'tameryaliniz@hotmail.com';
 const PASSWORD = process.argv[2];
 
 if (!PASSWORD) {
@@ -57,11 +57,11 @@ async function main() {
   await setDoc(doc(db, 'users', uid), {
     email: EMAIL,
     role: 'admin',
-    displayName: 'Cebrail Kara',
+    displayName: 'Tamer Yalınız',
     createdAt: new Date().toISOString(),
   }, { merge: true });
 
-  console.log('🎉 Tamamlandı! cebrailkara@gmail.com artık admin olarak giriş yapabilir.');
+  console.log('🎉 Tamamlandı! tameryaliniz@hotmail.com artık admin olarak giriş yapabilir.');
   process.exit(0);
 }
 
