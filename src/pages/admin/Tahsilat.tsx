@@ -9,6 +9,8 @@ import {
     orderBy,
     where,
     writeBatch,
+    updateDoc,
+    deleteField,
 } from "firebase/firestore";
 import {
     ref,
@@ -31,11 +33,14 @@ import {
     Eye,
     DollarSign,
     CheckCircle,
+    Pencil,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TahsilatMatrix } from "./TahsilatMatrix";
 import { PhotoInput } from "@/components/ui/photo-input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -75,9 +80,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 
-type PaymentMethod = "nakit" | "havale" | "kredi_karti" | "diger";
+export type PaymentMethod = "nakit" | "havale" | "kredi_karti" | "diger";
 
-type Payment = {
+export type Payment = {
     id: string;
     vehiclePlate: string;
     customerName: string;
@@ -130,6 +135,7 @@ export const Tahsilat = () => {
     const [addOpen, setAddOpen] = useState(false);
     const [saving, setSaving] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
     const [dekontFile, setDekontFile] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -255,24 +261,42 @@ export const Tahsilat = () => {
                 setUploading(false);
             }
 
-            const paymentDoc = await addDoc(collection(db, "payments"), {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const payload: any = {
                 vehiclePlate: form.vehiclePlate.trim().toUpperCase(),
                 customerName: form.customerName.trim(),
                 amount: form.amount,
                 date: form.date,
                 paymentMethod: form.paymentMethod,
                 description: form.description.trim(),
-                ...(dekontUrl ? { dekontUrl } : {}),
-                createdAt: new Date().toISOString(),
-            });
+            };
 
-            // Cari hesaba alacak kaydı oluştur
+            if (dekontUrl) {
+                payload.dekontUrl = dekontUrl;
+            } else if (!previewUrl && editingPaymentId) {
+                // Düzenleme modunda 'Kaldır' diyerek silinen mevcut dekont alanı update için temizleniyor
+                payload.dekontUrl = deleteField();
+            }
+
+            let paymentDocId = editingPaymentId;
+
+            if (editingPaymentId) {
+                await updateDoc(doc(db, "payments", editingPaymentId), payload);
+            } else {
+                const addedDoc = await addDoc(collection(db, "payments"), {
+                    ...payload,
+                    createdAt: new Date().toISOString(),
+                });
+                paymentDocId = addedDoc.id;
+            }
+
+            // Cari hesaba alacak kaydı oluştur / güncelle
             try {
                 const custQ = query(collection(db, "customers"), where("name", "==", form.customerName.trim()));
                 const custSnap = await getDocs(custQ);
                 const matchedCustomer = custSnap.docs[0];
                 if (matchedCustomer) {
-                    await addDoc(collection(db, "customer_debts"), {
+                    const debtPayload = {
                         customerId: matchedCustomer.id,
                         customerName: form.customerName.trim(),
                         type: "alacak",
@@ -283,15 +307,33 @@ export const Tahsilat = () => {
                         vehiclePlate: form.vehiclePlate.trim().toUpperCase(),
                         status: "completed",
                         source: "tahsilat",
-                        paymentId: paymentDoc.id,
-                        createdAt: new Date().toISOString(),
-                    });
+                    };
+
+                    if (editingPaymentId) {
+                        const linkedQ = query(collection(db, "customer_debts"), where("paymentId", "==", editingPaymentId));
+                        const linkedSnap = await getDocs(linkedQ);
+                        if (!linkedSnap.empty) {
+                            await updateDoc(linkedSnap.docs[0].ref, debtPayload);
+                        } else {
+                            await addDoc(collection(db, "customer_debts"), {
+                                ...debtPayload,
+                                paymentId: paymentDocId,
+                                createdAt: new Date().toISOString(),
+                            });
+                        }
+                    } else {
+                        await addDoc(collection(db, "customer_debts"), {
+                            ...debtPayload,
+                            paymentId: paymentDocId,
+                            createdAt: new Date().toISOString(),
+                        });
+                    }
                 }
             } catch (syncErr) {
                 console.error("Cari sync error (non-blocking):", syncErr);
             }
 
-            toast({ title: "Kaydedildi", description: `${formatMoney(form.amount)} tahsilat kaydı oluşturuldu.` });
+            toast({ title: editingPaymentId ? "Güncellendi" : "Kaydedildi", description: `${formatMoney(form.amount)} tahsilat kaydı ${editingPaymentId ? 'güncellendi' : 'oluşturuldu'}.` });
             setAddOpen(false);
             resetForm();
             void fetchPayments();
@@ -302,6 +344,21 @@ export const Tahsilat = () => {
             setSaving(false);
             setUploading(false);
         }
+    };
+
+    const handleEdit = (p: Payment) => {
+        setForm({
+            vehiclePlate: p.vehiclePlate,
+            customerName: p.customerName,
+            amountRaw: p.amount.toString(),
+            amount: p.amount,
+            date: p.date,
+            paymentMethod: p.paymentMethod,
+            description: p.description,
+        });
+        setEditingPaymentId(p.id);
+        setPreviewUrl(p.dekontUrl || null);
+        setAddOpen(true);
     };
 
     const resetForm = () => {
@@ -317,6 +374,7 @@ export const Tahsilat = () => {
         setDekontFile(null);
         setCustomerSearch("");
         setShowCustomerDropdown(false);
+        setEditingPaymentId(null);
         if (previewUrl) URL.revokeObjectURL(previewUrl);
         setPreviewUrl(null);
     };
@@ -397,7 +455,7 @@ export const Tahsilat = () => {
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight text-slate-900">Tahsilat Takibi</h2>
                     <p className="text-slate-500">
-                        Gerçek tahsil edilen tutarları kaydedin ve dekont ekleyin.
+                        Gerçek tahsil edilen tutarları ve araç-ay matrisini takip edin.
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -410,6 +468,34 @@ export const Tahsilat = () => {
                 </div>
             </div>
 
+            <Tabs defaultValue="matrix" className="space-y-6">
+                <TabsList className="bg-white border shadow-sm">
+                    <TabsTrigger value="matrix" className="data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700">Tahsilat Tablosu (Matris)</TabsTrigger>
+                    <TabsTrigger value="list" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Tahsilat Geçmişi (Liste)</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="matrix" className="m-0 focus-visible:outline-none">
+                    <TahsilatMatrix 
+                        payments={payments} 
+                        onEdit={handleEdit}
+                        onDelete={(id) => {
+                            if (window.confirm("Bu tahsilatı silmek istediğinize emin misiniz?")) {
+                                void handleDelete(id);
+                            }
+                        }}
+                        onAdd={(plate, customer) => {
+                            resetForm();
+                            setForm(prev => ({ 
+                                ...prev, 
+                                vehiclePlate: plate.toUpperCase(), 
+                                customerName: customer || "" 
+                            }));
+                            setAddOpen(true);
+                        }}
+                    />
+                </TabsContent>
+
+                <TabsContent value="list" className="m-0 space-y-6 focus-visible:outline-none">
             {/* Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card className="border-emerald-200 bg-emerald-50/40">
@@ -559,6 +645,14 @@ export const Tahsilat = () => {
                                                 )}
                                             </TableCell>
                                             <TableCell className="text-right">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600 mr-2"
+                                                    onClick={() => handleEdit(p)}
+                                                >
+                                                    <Pencil className="h-4 w-4" />
+                                                </Button>
                                                 <AlertDialog>
                                                     <AlertDialogTrigger asChild>
                                                         <Button
@@ -604,17 +698,19 @@ export const Tahsilat = () => {
                     )}
                 </CardContent>
             </Card>
+            </TabsContent>
+            </Tabs>
 
             {/* Add Payment Dialog */}
             <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) resetForm(); }}>
                 <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            <CheckCircle className="w-5 h-5 text-emerald-600" />
-                            Yeni Tahsilat Kaydı
+                            {editingPaymentId ? <Pencil className="w-5 h-5 text-emerald-600" /> : <CheckCircle className="w-5 h-5 text-emerald-600" />}
+                            {editingPaymentId ? "Tahsilat Düzenle" : "Yeni Tahsilat Kaydı"}
                         </DialogTitle>
                         <DialogDescription>
-                            Gerçek tahsil edilen tutarı ve dekont bilgisini girin.
+                            {editingPaymentId ? "Tahsilat kayıt verilerini güncelleyin." : "Gerçek tahsil edilen tutarı ve dekont bilgisini girin."}
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleSave} className="space-y-4 py-2">
@@ -731,16 +827,23 @@ export const Tahsilat = () => {
                             <div className="border-2 border-dashed rounded-lg p-4 text-center relative hover:bg-slate-50 transition-colors">
                                 {previewUrl ? (
                                     <div className="space-y-2">
-                                        {dekontFile?.type.startsWith("image/") ? (
-                                            <img
-                                                src={previewUrl}
-                                                alt="Dekont"
-                                                className="max-h-40 mx-auto rounded border"
-                                            />
+                                        {dekontFile ? (
+                                            dekontFile.type.startsWith("image/") ? (
+                                                <img
+                                                    src={previewUrl}
+                                                    alt="Dekont"
+                                                    className="max-h-40 mx-auto rounded border"
+                                                />
+                                            ) : (
+                                                <div className="flex items-center justify-center gap-2 text-emerald-700">
+                                                    <FileText className="w-8 h-8" />
+                                                    <span className="text-sm font-medium">{dekontFile.name}</span>
+                                                </div>
+                                            )
                                         ) : (
-                                            <div className="flex items-center justify-center gap-2 text-emerald-700">
-                                                <FileText className="w-8 h-8" />
-                                                <span className="text-sm font-medium">{dekontFile?.name}</span>
+                                            <div className="flex flex-col items-center gap-2">
+                                                <img src={previewUrl} alt="Aktif Dekont" className="max-h-40 mx-auto rounded border" />
+                                                <Badge variant="outline" className="bg-emerald-50 text-emerald-700">Kayıtlı Dekont</Badge>
                                             </div>
                                         )}
                                         <Button

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc, where } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "@/integrations/firebase/client";
-import { ArrowLeft, Car, Fuel, Gauge, Pencil, Save, X } from "lucide-react";
+import { ArrowLeft, Car, Fuel, Gauge, Pencil, Save, X, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,14 @@ import { PhotoInput } from "@/components/ui/photo-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { compressImageForUpload } from "@/utils/imageCompression";
+
+const formatMoney = (v: number) =>
+  new Intl.NumberFormat("tr-TR", {
+    style: "currency",
+    currency: "TRY",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(v);
 
 type VehicleStatus = "active" | "rented" | "maintenance" | "inactive";
 
@@ -27,6 +35,7 @@ type Vehicle = {
   daily_price: string;
   price: string;
   purchase_price?: number;
+  sale_price?: number;
   km: number;
   passengers: number;
   image_url: string | null;
@@ -75,6 +84,7 @@ const mapVehicle = (id: string, data: Record<string, unknown>): Vehicle => {
     daily_price: String(data.daily_price || "0"),
     price: String(data.price || "0"),
     purchase_price: Number(data.purchase_price || 0),
+    sale_price: Number(data.sale_price || 0),
     km: Number(data.km || 0),
     passengers: Number(data.passengers || 5),
     image_url: (data.image_url as string) || images[0] || null,
@@ -116,6 +126,8 @@ export const VehicleDetail = () => {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [totalCost, setTotalCost] = useState<number>(0);
+  const [totalIncome, setTotalIncome] = useState<number>(0);
   const [uploadingSlots, setUploadingSlots] = useState<boolean[]>(Array.from({ length: MAX_IMAGES }, () => false));
   const [uploadingRegistration, setUploadingRegistration] = useState(false);
   useEffect(() => {
@@ -132,6 +144,16 @@ export const VehicleDetail = () => {
         const mapped = mapVehicle(vehicleSnap.id, vehicleSnap.data());
         setVehicle(mapped);
         setFormData({ ...mapped, image_urls: normalizeImages(mapped.image_urls) });
+
+        // Calculate costs and incomes
+        const costQ = query(collection(db, "vehicle_costs"), where("vehicleId", "==", id));
+        const costSnap = await getDocs(costQ);
+        setTotalCost(costSnap.docs.reduce((acc, d) => acc + Number(d.data().amount || 0), 0));
+
+        const plateUpper = mapped.plate.toUpperCase();
+        const incomeQ = query(collection(db, "payments"), where("vehiclePlate", "==", plateUpper));
+        const incomeSnap = await getDocs(incomeQ);
+        setTotalIncome(incomeSnap.docs.reduce((acc, d) => acc + Number(d.data().amount || 0), 0));
       }
 
       const q = query(collection(db, "vehicle_operations"), where("vehicleId", "==", id), orderBy("date", "desc"));
@@ -240,6 +262,7 @@ export const VehicleDetail = () => {
         daily_price: String(formData.daily_price || "0").trim(),
         price: String(formData.price || "0").trim(),
         purchase_price: Number(formData.purchase_price || 0),
+        sale_price: Number(formData.sale_price || 0),
         km: Number(formData.km || 0),
         passengers: Number(formData.passengers || 0),
         monthly_fixed_cost: Number(formData.monthly_fixed_cost || 0),
@@ -315,6 +338,56 @@ export const VehicleDetail = () => {
         <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Yakit</CardTitle><Fuel className="w-4 h-4 text-slate-400" /></CardHeader><CardContent><div className="text-2xl font-bold">{lastReturn?.fuel || lastDelivery?.fuel || "N/A"}</div></CardContent></Card>
       </div>
 
+      {!editing && (
+        <Card className="border-emerald-200 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-bl-full -z-10"></div>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-emerald-800 flex items-center gap-2">
+              <span className="bg-emerald-100 p-2 rounded-lg"><TrendingUp className="w-5 h-5 text-emerald-600" /></span> 
+              Araç Karlılık Tablosu
+            </CardTitle>
+            <p className="text-sm text-slate-500">Alış maliyeti, geçmiş tüm masraflar, satış rakamı ve elde edilen toplam tahsilat (kiralama gelirleri) üzerinden hesaplanan gerçek net kar verisidir.</p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 items-center">
+              <div className="space-y-1">
+                <span className="text-xs font-semibold text-slate-500 uppercase">Araç Maliyeti (Alış)</span>
+                <div className="text-lg font-bold text-slate-700">{formatMoney(vehicle.purchase_price || 0)}</div>
+              </div>
+              <div className="text-2xl text-slate-300 font-light hidden md:block text-center">+</div>
+              <div className="space-y-1">
+                <span className="text-xs font-semibold text-slate-500 uppercase">Toplam Masraf</span>
+                <div className="text-lg font-bold text-red-600">{formatMoney(totalCost)}</div>
+              </div>
+              <div className="text-2xl text-slate-300 font-light hidden md:block text-center">=</div>
+              <div className="space-y-1 col-span-2 md:col-span-1 border-l-2 pl-4 border-slate-100">
+                <span className="text-xs font-semibold text-slate-500 uppercase">Toplam Yatırım</span>
+                <div className="text-xl font-bold text-slate-800">{formatMoney((vehicle.purchase_price || 0) + totalCost)}</div>
+              </div>
+            </div>
+            <div className="my-4 border-t border-dashed border-slate-200"></div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 items-center">
+              <div className="space-y-1">
+                <span className="text-xs font-semibold text-slate-500 uppercase">Satış Rakamı</span>
+                <div className="text-lg font-bold text-emerald-700">{formatMoney(vehicle.sale_price || 0)}</div>
+              </div>
+              <div className="text-2xl text-slate-300 font-light hidden md:block text-center">+</div>
+              <div className="space-y-1">
+                <span className="text-xs font-semibold text-slate-500 uppercase">Tahsilatlar (Gelir)</span>
+                <div className="text-lg font-bold text-emerald-600">{formatMoney(totalIncome)}</div>
+              </div>
+              <div className="text-2xl text-slate-300 font-light hidden md:block text-center">=</div>
+              <div className="space-y-1 col-span-2 md:col-span-1 border-l-2 pl-4 border-emerald-100 bg-emerald-50/50 p-2 rounded">
+                <span className="text-xs font-bold text-emerald-900 uppercase">Gerçek Net Kar</span>
+                <div className={`text-2xl font-black ${((vehicle.sale_price || 0) + totalIncome) - ((vehicle.purchase_price || 0) + totalCost) >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                  {formatMoney(((vehicle.sale_price || 0) + totalIncome) - ((vehicle.purchase_price || 0) + totalCost))}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader><CardTitle>{editing ? "Tum Alanlari Duzenle" : "Arac Bilgileri"}</CardTitle></CardHeader>
         <CardContent className="space-y-6">
@@ -350,6 +423,7 @@ export const VehicleDetail = () => {
               <div className="space-y-2"><Label>Gunluk Fiyat</Label><Input className="h-11" inputMode="numeric" value={formData.daily_price || ""} disabled={!editing} onChange={(e) => setFormData({ ...formData, daily_price: e.target.value })} /></div>
               <div className="space-y-2"><Label>Aylik Fiyat</Label><Input className="h-11" inputMode="numeric" value={formData.price || ""} disabled={!editing} onChange={(e) => setFormData({ ...formData, price: e.target.value })} /></div>
               <div className="space-y-2"><Label>Alış Fiyatı (₺)</Label><Input className="h-11" type="number" min={0} value={formData.purchase_price || 0} disabled={!editing} onChange={(e) => setFormData({ ...formData, purchase_price: Number(e.target.value || 0) })} /></div>
+              <div className="space-y-2"><Label>Satış Rakamı (₺)</Label><Input className="h-11" type="number" min={0} value={formData.sale_price || 0} disabled={!editing} onChange={(e) => setFormData({ ...formData, sale_price: Number(e.target.value || 0) })} /></div>
               <div className="space-y-2"><Label>Aylik Sabit Gider</Label><Input className="h-11" type="number" min={0} value={formData.monthly_fixed_cost ?? 0} disabled={!editing} onChange={(e) => setFormData({ ...formData, monthly_fixed_cost: Number(e.target.value || 0) })} /></div>
               <div className="space-y-2"><Label>Kiralama Basi Gider</Label><Input className="h-11" type="number" min={0} value={formData.cost_per_rental ?? 0} disabled={!editing} onChange={(e) => setFormData({ ...formData, cost_per_rental: Number(e.target.value || 0) })} /></div>
             </div>

@@ -78,6 +78,7 @@ export type Vehicle = {
     name: string;
     category: string;
     plate: string;
+    color?: string;
     status: 'active' | 'maintenance' | 'rented' | 'inactive';
     fuel: string;
     transmission: string;
@@ -184,6 +185,7 @@ export const FleetManagement = () => {
         name: "",
         category: "",
         plate: "",
+        color: "",
         status: 'active',
         fuel: "",
         transmission: "",
@@ -261,6 +263,7 @@ export const FleetManagement = () => {
                     name: data.name || "Bilinmiyor",
                     category: data.category || "Genel",
                     plate: data.plate || "34 XX 000",
+                    color: data.color || "",
                     status: data.status || 'active',
                     fuel: data.fuel || "Benzin",
                     transmission: data.transmission || "Manuel",
@@ -300,6 +303,7 @@ export const FleetManagement = () => {
                     name: v.name,
                     category: v.category,
                     plate: "-",
+                    color: "",
                     status: "active" as const,
                     fuel: v.fuel,
                     transmission: v.transmission,
@@ -359,6 +363,7 @@ export const FleetManagement = () => {
                     await addDoc(collection(db, "vehicles"), {
                         name: v.name,
                         category: v.category,
+                        color: "",
                         passengers: v.passengers,
                         fuel: v.fuel,
                         transmission: v.transmission,
@@ -468,6 +473,7 @@ export const FleetManagement = () => {
             draftPayloads.push({
                 name,
                 plate,
+                color: "",
                 category,
                 status,
                 fuel,
@@ -552,6 +558,7 @@ export const FleetManagement = () => {
 
             const payload: Partial<Vehicle> = {
                 ...formData,
+                color: formData.color || "",
                 image_urls: selectedImageUrls,
                 image_url: selectedImageUrls[0] || null,
                 purchase_price: Number(formData.purchase_price || 0),
@@ -621,6 +628,7 @@ export const FleetManagement = () => {
         setEditingVehicle(vehicle);
         setFormData({
             ...vehicle,
+            color: vehicle.color || "",
             image_urls: normalizeImageSlots(vehicle.image_urls || (vehicle.image_url ? [vehicle.image_url] : [])),
             monthly_fixed_cost: Number(vehicle.monthly_fixed_cost || 0),
             cost_per_rental: Number(vehicle.cost_per_rental || 0),
@@ -641,6 +649,7 @@ export const FleetManagement = () => {
             name: "",
             category: "",
             plate: "",
+            color: "",
             status: 'active',
             fuel: "",
             transmission: "",
@@ -1022,6 +1031,10 @@ export const FleetManagement = () => {
                                     <div className="space-y-2">
                                         <Label>Plaka</Label>
                                         <Input className="h-11 uppercase" value={formData.plate} onChange={e => setFormData({ ...formData, plate: e.target.value })} placeholder="34 XX 000" required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Renk</Label>
+                                        <Input className="h-11" value={formData.color || ""} onChange={e => setFormData({ ...formData, color: e.target.value })} placeholder="Siyah, Beyaz vb." />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Kategori</Label>

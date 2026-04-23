@@ -1663,7 +1663,7 @@
             "format": "date-time",
             "nullable": true,
             "description": "Ek cezalar uygulanmadan önce ödeme yapılacak son tarih",
-            "example": "2026-04-08T00:00:00.000000Z"
+            "example": "2026-04-18T00:00:00.000000Z"
           },
           "fee": {
             "type": "number",
