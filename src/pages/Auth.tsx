@@ -28,7 +28,7 @@ export default function Auth() {
       try {
         const userSnap = await getDoc(doc(db, "users", user.uid));
         const role = userSnap.exists() ? userSnap.data()?.role : null;
-        const isBypassAdmin = user.uid === "QzwyNVumNnNco2fFCTw6S01vQQj1";
+        const isBypassAdmin = user.uid === "QzwyNVumNnNco2fFCTw6S01vQQj1" || user.email === "tameryaliniz@hotmail.com";
 
         if (role === "admin" || role === "operation" || isBypassAdmin) {
           navigate("/admin");
@@ -55,13 +55,13 @@ export default function Auth() {
       const credential = await signInWithEmailAndPassword(auth, email, password);
       const userSnap = await getDoc(doc(db, "users", credential.user.uid));
       const role = userSnap.exists() ? userSnap.data()?.role : null;
-      const isBypassAdmin = credential.user.uid === "QzwyNVumNnNco2fFCTw6S01vQQj1";
+      const isBypassAdmin = credential.user.uid === "QzwyNVumNnNco2fFCTw6S01vQQj1" || credential.user.email === "tameryaliniz@hotmail.com";
 
       if (role !== "admin" && role !== "operation" && !isBypassAdmin) {
         await signOut(auth);
         toast({
-          title: "Yetkisiz giris",
-          description: "Yonetim paneline sadece yetkili kullanicilar erisebilir.",
+          title: "Yetkisiz giriş",
+          description: "Yönetim paneline sadece yetkili kullanıcılar erişebilir.",
           variant: "destructive",
         });
         return;

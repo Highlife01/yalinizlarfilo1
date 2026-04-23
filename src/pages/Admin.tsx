@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from "react";
 import { Navigate, Routes, Route, useNavigate } from "react-router-dom";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth, db } from "@/integrations/firebase/client";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Loader2 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -46,8 +46,16 @@ export default function Admin() {
       try {
         const userSnap = await getDoc(doc(db, "users", user.uid));
         let role = userSnap.exists() ? userSnap.data()?.role : null;
-        if (user.uid === "QzwyNVumNnNco2fFCTw6S01vQQj1") {
+        if (user.uid === "QzwyNVumNnNco2fFCTw6S01vQQj1" || user.email === "tameryaliniz@hotmail.com") {
           role = "admin";
+          // Auto-provision user record in Firestore if it doesn't exist or is missing role
+          if (!userSnap.exists() || userSnap.data()?.role !== "admin") {
+            await setDoc(doc(db, "users", user.uid), {
+              email: user.email,
+              role: "admin",
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+          }
         }
 
         if (role !== "admin" && role !== "operation") {
