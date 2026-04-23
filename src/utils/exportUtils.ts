@@ -239,7 +239,7 @@ export const generateInvoicePdf = async (params: InvoicePdfParams): Promise<void
     doc.setTextColor(...SLATE_700);
     doc.text("Yesiloba Mah. 46120 Cad. Oto Galericiler", 15, y + 11);
     doc.text("Sitesi D Blok No:15/8F Seyhan / ADANA", 15, y + 16);
-    doc.text("Tel: 0531 392 47 69", 15, y + 21);
+    doc.text("Tel: 0533 946 50 02", 15, y + 21);
     doc.text("Vergi Dairesi: Seyhan", 15, y + 26);
     doc.text("VKN: 933 114 5509", 15, y + 31);
 

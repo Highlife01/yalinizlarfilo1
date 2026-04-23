@@ -61,7 +61,7 @@ const defaultKiralayan: KiralayanInfo = {
   unvan: "YALINIZLAR FİLO LTD. ŞTİ.",
   adres: "Yeşiloba Mah. 46120 Cad. Oto Galericiler Sitesi D Blok No: 15/8F Seyhan/ADANA",
   vergiNo: "Seyhan V.D.: 933 114 5509",
-  telefon: "0531 392 47 69",
+  telefon: "0533 946 50 02",
   email: "info@yalinizlarfilo.com.tr",
   ticaretSicilNo: "99106",
   mersisNo: "0933 1145 5090 0001",

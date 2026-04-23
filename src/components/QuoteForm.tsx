@@ -70,7 +70,7 @@ export const QuoteForm = () => {
                   </div>
                   <div>
                     <div className="font-semibold text-foreground">Telefon</div>
-                    <div className="text-muted-foreground">0531 392 47 69</div>
+                    <div className="text-muted-foreground">0533 946 50 02</div>
                   </div>
                 </div>
               </Card>

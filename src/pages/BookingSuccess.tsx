@@ -84,7 +84,7 @@ const BookingSuccess = () => {
                         </div>
 
                         <p className="text-xs text-slate-400">
-                            Herhangi bir sorunuz için 0531 392 47 69 numaralı hattan bize ulaşabilirsiniz.
+                            Herhangi bir sorunuz için 0533 946 50 02 numaralı hattan bize ulaşabilirsiniz.
                         </p>
                     </CardContent>
                 </Card>

@@ -37,7 +37,7 @@ const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
   siteName: "Yalınızlar Filo",
   description: "Adana'nın güvenilir araç kiralama filosu.",
   contactEmail: "info@yalinizlarfilo.com.tr",
-  contactPhone: "0531 392 47 69",
+  contactPhone: "0533 946 50 02",
 };
 
 const TAB_VALUES = ["general", "api", "security", "employees"] as const;
@@ -552,7 +552,7 @@ export const Settings = () => {
                     Test mesajı <strong>yazdığınız numaraya</strong> gider (alıcı). Endpoint, token ve Phone Number ID doğruluğunu kontrol eder.
                   </p>
                   <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
-                    <strong>Mesaj gelmiyorsa:</strong> WhatsApp kuralları gereği serbest metin sadece <strong>alıcı son 24 saat içinde sizin iş numaranıza (0531 392 47 69) WhatsApp’tan mesaj attıysa</strong> iletilir. Önce 0532… numarasından 0531 392 47 69’a bir mesaj atın, ardından buradan test gönderin; mesaj 24 saat penceresinde gider.
+                    <strong>Mesaj gelmiyorsa:</strong> WhatsApp kuralları gereği serbest metin sadece <strong>alıcı son 24 saat içinde sizin iş numaranıza (0533 946 50 02) WhatsApp’tan mesaj attıysa</strong> iletilir. Önce 0532… numarasından 0533 946 50 02’a bir mesaj atın, ardından buradan test gönderin; mesaj 24 saat penceresinde gider.
                   </p>
                   <div className="flex gap-2">
                     <Input
@@ -572,7 +572,7 @@ export const Settings = () => {
                           await sendWhatsAppTestMessage(whatsappTestPhone.trim(), "API test mesajı");
                           toast({
                             title: "İstek kabul edildi",
-                            description: "Meta isteği kabul etti. Mesajın iletilmesi için alıcının son 24 saatte sizin WhatsApp iş numaranıza (0531 392 47 69) yazmış olması gerekir.",
+                            description: "Meta isteği kabul etti. Mesajın iletilmesi için alıcının son 24 saatte sizin WhatsApp iş numaranıza (0533 946 50 02) yazmış olması gerekir.",
                           });
                         } catch (err: unknown) {
                           const msg = err && typeof err === "object" && "message" in err ? String((err as { message?: string }).message) : "Gönderilemedi.";

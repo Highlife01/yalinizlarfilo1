@@ -102,11 +102,11 @@ export const Navbar = () => {
             </DropdownMenu>
 
             <a
-              href="tel:+905313924769"
+              href="tel:+905339465002"
               className="flex items-center space-x-2 text-foreground hover:text-primary transition-colors text-sm lg:text-base"
             >
               <Phone className="w-4 h-4" />
-              <span className="font-semibold whitespace-nowrap">0531 392 47 69</span>
+              <span className="font-semibold whitespace-nowrap">0533 946 50 02</span>
             </a>
             <Button
               variant="outline"
@@ -171,11 +171,11 @@ export const Navbar = () => {
               </a>
             ))}
             <a
-              href="tel:+905313924769"
+              href="tel:+905339465002"
               className="flex items-center space-x-2 text-foreground hover:text-primary transition-colors"
             >
               <Phone className="w-4 h-4" />
-              <span className="font-semibold">0531 392 47 69</span>
+              <span className="font-semibold">0533 946 50 02</span>
             </a>
             <Button
               variant="outline"

@@ -93,7 +93,7 @@ export const Hero = () => {
               </Button>
               <Button
                 size="lg"
-                onClick={() => window.location.href = 'tel:+905313924769'}
+                onClick={() => window.location.href = 'tel:+905339465002'}
                 className="bg-white text-navy hover:bg-white/90 shadow-lg"
               >
                 <Phone className="mr-2 w-5 h-5" />

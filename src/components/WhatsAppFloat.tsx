@@ -16,7 +16,7 @@ export function WhatsAppFloat() {
     return (
         <a
             id="wa-btn"
-            href="https://wa.me/905055018635?text=Merhaba%2C%20ara%C3%A7%20kiralama%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+            href="https://wa.me/905339465002?text=Merhaba%2C%20ara%C3%A7%20kiralama%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
             target="_blank"
             rel="noopener noreferrer"
             aria-label="WhatsApp ile iletişim"

@@ -132,7 +132,7 @@ export const ReservationsLookup = () => {
                 <Input
                   id="phone"
                   type="tel"
-                  placeholder="Örn: 0531 392 47 69"
+                  placeholder="Örn: 0533 946 50 02"
                   value={phoneInput}
                   onChange={(e) => setPhoneInput(e.target.value)}
                 />
