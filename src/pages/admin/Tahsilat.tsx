@@ -39,8 +39,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TahsilatMatrix } from "./TahsilatMatrix";
 import { PhotoInput } from "@/components/ui/photo-input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -455,7 +453,7 @@ export const Tahsilat = () => {
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight text-slate-900">Tahsilat Takibi</h2>
                     <p className="text-slate-500">
-                        Gerçek tahsil edilen tutarları ve araç-ay matrisini takip edin.
+                        Gerçek tahsil edilen tutarları kaydedin ve dekont ekleyin.
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -468,34 +466,7 @@ export const Tahsilat = () => {
                 </div>
             </div>
 
-            <Tabs defaultValue="matrix" className="space-y-6">
-                <TabsList className="bg-white border shadow-sm">
-                    <TabsTrigger value="matrix" className="data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700">Tahsilat Tablosu (Matris)</TabsTrigger>
-                    <TabsTrigger value="list" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">Tahsilat Geçmişi (Liste)</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="matrix" className="m-0 focus-visible:outline-none">
-                    <TahsilatMatrix 
-                        payments={payments} 
-                        onEdit={handleEdit}
-                        onDelete={(id) => {
-                            if (window.confirm("Bu tahsilatı silmek istediğinize emin misiniz?")) {
-                                void handleDelete(id);
-                            }
-                        }}
-                        onAdd={(plate, customer) => {
-                            resetForm();
-                            setForm(prev => ({ 
-                                ...prev, 
-                                vehiclePlate: plate.toUpperCase(), 
-                                customerName: customer || "" 
-                            }));
-                            setAddOpen(true);
-                        }}
-                    />
-                </TabsContent>
-
-                <TabsContent value="list" className="m-0 space-y-6 focus-visible:outline-none">
+            <div className="space-y-6">
             {/* Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card className="border-emerald-200 bg-emerald-50/40">
@@ -698,8 +669,7 @@ export const Tahsilat = () => {
                     )}
                 </CardContent>
             </Card>
-            </TabsContent>
-            </Tabs>
+            </div>
 
             {/* Add Payment Dialog */}
             <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) resetForm(); }}>
